@@ -139,7 +139,10 @@ def find_presentation_matches(candidate: MedicationCandidate, presentations: lis
     matches = []
     for presentation in presentations:
         presentation_name = _name_key(presentation)
-        if not compare_names(candidate_name, presentation_name):
+        if (
+            not compare_names(candidate_name, presentation_name)
+            and not matches_search_name(candidate.name, presentation)
+        ):
             continue
         if compare_strengths(candidate.strength, presentation.strength) is False:
             continue
@@ -175,20 +178,27 @@ def _form_key(form: str) -> str:
 
 
 def _name_key(medication: MedicationCandidate) -> str:
-    """Normalize the medication name and remove matching strength and form details for comparison."""
+    """Use a matching structured strength to locate the end of the medication name."""
     name = normalize_name(medication.name)
+
+    if medication.strength:
+        for number in re.finditer(r"(?<!\S)[0-9]", name):
+            if number.start() == 0:
+                continue
+            suffix = name[number.start():]
+            for boundary in re.finditer(r"\s+|$", suffix):
+                strength = suffix[:boundary.start()]
+                remaining = suffix[boundary.end():].lstrip()
+                if remaining.startswith(("/", "+")) or re.match(r"[0-9]", remaining):
+                    continue
+                if compare_strengths(strength, medication.strength) is True:
+                    return name[:number.start()].strip()
+
     if medication.form:
         aliases = FORM_NAMES.get(_form_key(medication.form), (normalize_name(medication.form),))
         form_pattern = "|".join(re.escape(alias) for alias in aliases)
         name = re.sub(r"\s+(?:" + form_pattern + r")(?:\s+efg)?$", "", name)
 
-    if medication.strength:
-        for number in re.finditer(r"(?<!\S)[0-9]", name):
-            comparison = compare_strengths(name[number.start():], medication.strength)
-            if comparison is False:
-                return ""
-            if comparison is True and number.start() > 0:
-                return name[:number.start()].strip()
     return name
 
 

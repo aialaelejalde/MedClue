@@ -226,8 +226,15 @@ def test_multiple_cima_presentations_are_valid_options(candidate, presentation):
     assert result.official_uses == []
 
 
-@pytest.mark.parametrize("option_field", ["candidates", "presentations"])
-@pytest.mark.parametrize("option_count", [0, 1])
+@pytest.mark.parametrize(
+    "option_field, option_count",
+    [
+        ("candidates", 0),
+        ("candidates", 1),
+        ("presentations", 0),
+        ("presentations", 1),
+    ],
+)
 def test_multiple_matches_requires_at_least_two_options(candidate, presentation, option_field, option_count):
     option = candidate if option_field == "candidates" else presentation
     payload = {"status": "multiple_matches", option_field: [option] * option_count}
@@ -240,7 +247,7 @@ def test_ai_candidates_and_cima_presentations_cannot_be_mixed(response_payloads,
     payload = response_payloads["multiple_matches"]
     payload["presentations"] = [presentation, {**presentation, "national_code": "000003"}]
 
-    with pytest.raises(ValidationError, match="two candidates or two presentations"):
+    with pytest.raises(ValidationError, match="at least two candidates or presentations"):
         IdentificationResponse.model_validate_json(json.dumps(payload))
 
 

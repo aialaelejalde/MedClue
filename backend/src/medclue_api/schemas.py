@@ -110,11 +110,11 @@ class IdentificationResponse(_Schema):
     def _check_matches(self) -> None:
         if self.candidates:
             if len(self.candidates) < 2 or self.presentations:
-                raise ValueError("Send at least two candidates or two presentations.")
+                raise ValueError("Send at least two candidates or presentations.")
             if self.suggested_candidate is not None:
                 raise ValueError("Do not select an AI candidate automatically.")
         elif len(self.presentations) < 2:
-            raise ValueError("Send at least two candidates or two presentations.")
+            raise ValueError("Send at least two candidates or presentations.")
 
     def _check_failure(self) -> None:
         if self.failed_step is None:

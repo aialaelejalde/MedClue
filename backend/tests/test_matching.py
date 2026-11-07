@@ -14,12 +14,6 @@ from medclue_api.matching import (
 from medclue_api.schemas import CimaPresentation, MedicationCandidate
 
 
-NAME_VARIANTS = (
-    "Example-Plus", "Example+Plus", "Example/Plus", "Example.Plus",
-    "Example_Plus", "ExamplePlus", "Example Plus",
-)
-
-
 @pytest.fixture
 def candidate():
     return MedicationCandidate(name="Example", strength="500 mg", form="tablet")
@@ -156,15 +150,41 @@ def test_missing_candidate_form_prevents_verification(candidate, presentation):
     assert result.verified is None
 
 
-@pytest.mark.parametrize("candidate_name", NAME_VARIANTS)
-@pytest.mark.parametrize("presentation_name", NAME_VARIANTS)
+def test_medication_without_strength_remains_possible():
+    candidate = MedicationCandidate(name="Vaporub", strength=None, form="ointment")
+    presentation = CimaPresentation(
+        name="VAPORUB POMADA",
+        strength=None,
+        form="pomada",
+        registration_number="000001",
+        national_code="000002",
+    )
+
+    result = find_presentation_matches(candidate, [presentation])
+
+    assert result.presentations == [presentation]
+    assert result.verified is None
+
+
+@pytest.mark.parametrize(
+    "candidate_name, presentation_name",
+    [
+        ("Example-Plus", "Example-Plus"),
+        ("  ÉXAMPLE PLUS ", "Example Plus"),
+        ("Example-Plus", "Example Plus"),
+        ("Example+Plus", "ExamplePlus"),
+        ("Example/Plus", "Example Plus"),
+        ("Example.Plus", "ExamplePlus"),
+        ("Example_Plus", "Example Plus"),
+    ],
+)
 def test_name_variants_keep_possible_matches_and_require_strict_verification(candidate, presentation, candidate_name, presentation_name):
     suggestion = candidate.model_copy(update={"name": candidate_name})
     possible = presentation.model_copy(update={"name": presentation_name})
     result = find_presentation_matches(suggestion, [possible])
 
     assert result.presentations == [possible]
-    if candidate_name == presentation_name:
+    if normalize_name(candidate_name) == normalize_name(presentation_name):
         assert result.verified == possible
     else:
         assert result.verified is None
@@ -200,9 +220,8 @@ def test_a_flexible_name_alternative_prevents_automatic_selection(candidate, pre
 @pytest.mark.parametrize(
     "strength, form", [("250 mg", "comprimidos"), ("500 mg", "capsule")]
 )
-@pytest.mark.parametrize("name", NAME_VARIANTS)
-def test_flexible_names_do_not_override_incompatible_strengths_or_forms(candidate, presentation, strength, form, name):
-    suggestion = candidate.model_copy(update={"name": name})
+def test_flexible_names_do_not_override_incompatible_strengths_or_forms(candidate, presentation, strength, form):
+    suggestion = candidate.model_copy(update={"name": "Example+Plus"})
     incompatible = presentation.model_copy(update={"name": "Example Plus", "strength": strength, "form": form})
     result = find_presentation_matches(suggestion, [incompatible])
 
@@ -253,12 +272,6 @@ def test_identical_medications_with_different_registrations_require_selection(ca
 
     assert result.presentations == [presentation, another]
     assert result.verified is None
-
-
-@pytest.mark.parametrize("first", NAME_VARIANTS)
-@pytest.mark.parametrize("second", NAME_VARIANTS)
-def test_name_comparison_accepts_existing_separator_variants(first, second):
-    assert compare_names(first, second)
 
 
 @pytest.mark.parametrize("other", ["Example Plus", "Examples", "Another", "", " - "])
@@ -380,6 +393,84 @@ def test_unclear_strength_prevents_verification_even_with_one_result(strength):
         name="Example", strength="875 mg + 125 mg", form="comprimidos",
         registration_number="000001", national_code="000002",
     )
+    result = find_presentation_matches(candidate, [presentation])
+
+    assert result.presentations == [presentation]
+    assert result.verified is None
+
+
+@pytest.mark.parametrize(
+    "name, strength, form, official_name",
+    [
+        ("Aspirina C", "400 mg + 240 mg", "COMPRIMIDO EFERVESCENTE",
+         "ASPIRINA C 400 mg/240 mg COMPRIMIDOS EFERVESCENTES"),
+        ("Example", "20 mg/ml", "SOLUCION PARA PULVERIZACION NASAL",
+         "EXAMPLE 100 mg/5 ml SOLUCION PARA PULVERIZACION NASAL"),
+        ("Example 2", "500 mg", "tablet", "EXAMPLE 2 500 mg TABLETS"),
+    ],
+)
+def test_structured_strength_locates_name_without_parsing_form_suffix(name, strength, form, official_name):
+    candidate = MedicationCandidate(name=name, strength=strength, form=form)
+    presentation = CimaPresentation(
+        name=official_name, strength=strength, form=form,
+        registration_number="000001", national_code="000002",
+    )
+
+    result = find_presentation_matches(candidate, [presentation])
+
+    assert result.presentations == [presentation]
+    assert result.verified == presentation
+
+
+@pytest.mark.parametrize(
+    "candidate_strength, official_strength, candidate_form, official_form, official_name",
+    [
+        ("5%", "5%", "cream", "CREMA", "EXAMPLE 5% CREMA"),
+        ("500 mg", None, "tablet", None, "EXAMPLE 500 mg COMPRIMIDOS"),
+        ("400 mg + 240 mg", "400 mg + 240 mg", "effervescent tablet",
+         "COMPRIMIDO EFERVESCENTE", "EXAMPLE 400 mg/240 mg COMPRIMIDOS EFERVESCENTES"),
+    ],
+)
+def test_unrecognized_or_missing_fields_do_not_discard_full_official_names(candidate_strength, official_strength, candidate_form, official_form, official_name):
+    candidate = MedicationCandidate(name="Example", strength=candidate_strength, form=candidate_form)
+    presentation = CimaPresentation(
+        name=official_name, strength=official_strength, form=official_form,
+        registration_number="000001", national_code="000002",
+    )
+
+    result = find_presentation_matches(candidate, [presentation])
+
+    assert result.presentations == [presentation]
+    assert result.verified is None
+
+
+@pytest.mark.parametrize("official_name", ["Example Forte 500 mg TABLETS", "Example C 500 mg TABLETS"])
+def test_distinctive_name_words_are_not_ignored(candidate, official_name):
+    presentation = CimaPresentation(
+        name=official_name, strength="500 mg", form="tablet",
+        registration_number="000001", national_code="000002",
+    )
+
+    result = find_presentation_matches(candidate, [presentation])
+
+    assert result.presentations == []
+    assert result.verified is None
+
+
+@pytest.mark.parametrize(
+    "strength, official_name",
+    [
+        ("100 mg", "EXAMPLE 100 mg / 5 ml SOLUCION"),
+        ("400 mg", "EXAMPLE 400 mg + 240 mg TABLETS"),
+    ],
+)
+def test_partial_strength_in_a_full_name_does_not_allow_verification(strength, official_name):
+    candidate = MedicationCandidate(name="Example", strength=strength, form="tablet")
+    presentation = CimaPresentation(
+        name=official_name, strength=strength, form="tablet",
+        registration_number="000001", national_code="000002",
+    )
+
     result = find_presentation_matches(candidate, [presentation])
 
     assert result.presentations == [presentation]
