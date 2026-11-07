@@ -4,9 +4,12 @@ import pytest
 
 from medclue_api.matching import (
     compare_forms,
+    compare_names,
     compare_strengths,
     find_presentation_matches,
-    normalize_name
+    group_presentations,
+    matches_search_name,
+    normalize_name,
 )
 from medclue_api.schemas import CimaPresentation, MedicationCandidate
 
@@ -236,11 +239,96 @@ def test_an_uncertain_alternative_prevents_automatic_selection(candidate, presen
     assert result.verified is None
 
 
-def test_two_exact_presentations_require_user_selection(candidate, presentation):
+def test_different_pack_sizes_are_one_verified_option(candidate, presentation):
     another_pack = presentation.model_copy(update={"national_code": "000003"})
     result = find_presentation_matches(candidate, [presentation, another_pack])
 
-    assert result.presentations == [presentation, another_pack]
+    assert result.presentations == [presentation]
+    assert result.verified == presentation
+
+
+def test_identical_medications_with_different_registrations_require_selection(candidate, presentation):
+    another = presentation.model_copy(update={"registration_number": "000004", "national_code": "000003"})
+    result = find_presentation_matches(candidate, [presentation, another])
+
+    assert result.presentations == [presentation, another]
+    assert result.verified is None
+
+
+@pytest.mark.parametrize("first", NAME_VARIANTS)
+@pytest.mark.parametrize("second", NAME_VARIANTS)
+def test_name_comparison_accepts_existing_separator_variants(first, second):
+    assert compare_names(first, second)
+
+
+@pytest.mark.parametrize("other", ["Example Plus", "Examples", "Another", "", " - "])
+def test_name_comparison_keeps_distinctive_words(other):
+    assert not compare_names("Example", other)
+
+
+@pytest.mark.parametrize(
+    "query, name, strength, form, expected",
+    [
+        ("Example-Plus", "EXAMPLE PLUS 500 mg COMPRIMIDOS EFG", "500 mg", "comprimidos", True),
+        ("  Médicine   Plus ", "MEDICINE+PLUS 500 mg COMPRIMIDOS", "500 mg", "comprimidos", True),
+        ("Example", "Example Forte 500 mg COMPRIMIDOS", "500 mg", "comprimidos", False),
+        ("Example", "Another 500 mg COMPRIMIDOS", "500 mg", "comprimidos", False),
+        ("Example", "Example 5% CREMA", "5%", "crema", True),
+        ("Example", "Example 500 mg COMPRIMIDOS", None, None, True),
+        ("Example", "Example CREMA", None, "crema", True),
+        ("Example 500 mg tablets", "Example 500 mg COMPRIMIDOS EFG", "500 mg", "comprimidos", True),
+        ("Example 2", "Example 2 500 mg COMPRIMIDOS", "500 mg", "comprimidos", True),
+        ("Example+Plus", "ExamplePlus 875 mg/125 mg COMPRIMIDOS", "875 mg + 125 mg", "comprimidos", True),
+    ],
+)
+def test_search_name_filter_preserves_possible_matches(query, name, strength, form, expected):
+    medication = MedicationCandidate(name=name, strength=strength, form=form)
+
+    assert matches_search_name(query, medication) is expected
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"registration_number": "000004"},
+        {"name": "Another"},
+        {"strength": "250 mg"},
+        {"form": "capsule"},
+        {"strength": None},
+        {"form": None},
+    ],
+)
+def test_grouping_keeps_different_medications_separate(presentation, changes):
+    other = presentation.model_copy(update={**changes, "national_code": "000003"})
+
+    assert group_presentations([presentation, other]) == [presentation, other]
+
+
+def test_grouping_ignores_case_and_outer_spacing_but_keeps_first_code(presentation):
+    other = presentation.model_copy(update={
+        "name": presentation.name.lower(), "strength": " 500 MG ",
+        "form": "COMPRIMIDOS", "national_code": "000003",
+    })
+
+    assert group_presentations([presentation, other, presentation]) == [presentation]
+    assert other.national_code == "000003"
+
+
+def test_grouping_packages_does_not_verify_uncertain_data(candidate, presentation):
+    incomplete = candidate.model_copy(update={"strength": None})
+    another_pack = presentation.model_copy(update={"national_code": "000003"})
+    result = find_presentation_matches(incomplete, [presentation, another_pack])
+
+    assert result.presentations == [presentation]
+    assert result.verified is None
+
+
+def test_different_strengths_remain_options_when_candidate_strength_is_unknown(candidate, presentation):
+    incomplete = candidate.model_copy(update={"strength": None})
+    other = presentation.model_copy(update={"name": "Example", "strength": "250 mg", "national_code": "000003"})
+    result = find_presentation_matches(incomplete, [presentation, other])
+
+    assert result.presentations == [presentation, other]
     assert result.verified is None
 
 

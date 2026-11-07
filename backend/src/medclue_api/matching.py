@@ -68,6 +68,43 @@ def normalize_name(name: str) -> str:
     return " ".join(text.split())
 
 
+def compare_names(first: str, second: str) -> bool:
+    first, second = normalize_name(first), normalize_name(second)
+    if not first or not second:
+        return False
+    flexible_first = _flexible_name_key(first)
+    return first == second or bool(flexible_first and flexible_first == _flexible_name_key(second))
+
+
+def matches_search_name(name: str, medication: MedicationCandidate) -> bool:
+    """Filter by name while allowing strength and form suffixes in CIMA results."""
+    search = medication.model_copy(update={"name": name})
+    search_name = _name_key(search) or normalize_name(name)
+    medication_name = _name_key(medication) or normalize_name(medication.name)
+    if compare_names(search_name, medication_name):
+        return True
+
+    # Keep possible matches when missing or unsupported details leave a numeric suffix.
+    return any(
+        compare_names(search_name, medication_name[:number.start()])
+        for number in re.finditer(r"(?<!\S)[0-9]", medication_name)
+    )
+
+
+def group_presentations(presentations: list[CimaPresentation]) -> list[CimaPresentation]:
+    """Keep one national code per medication, ignoring package size."""
+    grouped = {}
+    for presentation in presentations:
+        key = (
+            presentation.registration_number,
+            normalize_name(presentation.name),
+            normalize_name(presentation.strength) if presentation.strength else None,
+            normalize_name(presentation.form) if presentation.form else None,
+        )
+        grouped.setdefault(key, presentation)
+    return list(grouped.values())
+
+
 def compare_strengths(first: str | None, second: str | None) -> bool | None:
     """Return True for equivalent strengths, False for different strengths, or None if uncertain."""
     if not first or not second:
@@ -99,19 +136,10 @@ def compare_forms(first: str | None, second: str | None) -> bool | None:
 
 def find_presentation_matches(candidate: MedicationCandidate, presentations: list[CimaPresentation]) -> PresentationMatches:
     candidate_name = _name_key(candidate)
-    flexible_candidate_name = _flexible_name_key(candidate_name)
     matches = []
     for presentation in presentations:
         presentation_name = _name_key(presentation)
-        if not candidate_name or not presentation_name:
-            continue
-        if (
-            candidate_name != presentation_name
-            and (
-                not flexible_candidate_name
-                or flexible_candidate_name != _flexible_name_key(presentation_name)
-            )
-        ):
+        if not compare_names(candidate_name, presentation_name):
             continue
         if compare_strengths(candidate.strength, presentation.strength) is False:
             continue
@@ -119,6 +147,7 @@ def find_presentation_matches(candidate: MedicationCandidate, presentations: lis
             continue
         matches.append(presentation)
 
+    matches = group_presentations(matches)
     result = PresentationMatches(presentations=matches)
     if len(matches) == 1:
         presentation = matches[0]
