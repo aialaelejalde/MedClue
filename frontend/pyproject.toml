@@ -10,6 +10,9 @@ authors = [
 dependencies = [
     "flet>=1.0.5",
     "httpx==0.28.1",
+    "flet-camera==1.0.5",
+    "flet-permission-handler==1.0.5",
+    "Pillow==12.2.0",
 ]
 
 [dependency-groups]
@@ -31,3 +34,6 @@ copyright = "Copyright (C) 2026 Aiala Elejalde"
 
 [tool.flet.app]
 path = "src"
+
+[tool.flet.android.permission]
+"android.permission.CAMERA" = true
