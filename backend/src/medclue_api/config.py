@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 
 CIMA_BASE_URL = "https://cima.aemps.es/cima/rest/"
-IDENTIFICATION_TIMEOUT_SECONDS = 45
+IDENTIFICATION_TIMEOUT_SECONDS = 40
 RETRY_TOKEN_MAX_AGE_SECONDS = 15 * 60
 
 

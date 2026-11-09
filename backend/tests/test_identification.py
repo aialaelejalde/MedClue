@@ -1,4 +1,4 @@
-"""Test identification, retries, cancellation, and the 45-second time limit."""
+"""Test identification, retries, cancellation, and the 40-second processing limit."""
 
 import asyncio
 from types import SimpleNamespace
@@ -256,8 +256,8 @@ def test_image_analysis_global_timeout_retries_with_same_photo(identification, m
     assert all(call.args == (b"same photo", "image/jpeg") for call in context.openai.analyze_image.await_args_list)
 
 
-def test_45_second_deadline_is_shared_by_all_steps(identification, monkeypatch):
-    assert IDENTIFICATION_TIMEOUT_SECONDS == 45
+def test_40_second_deadline_is_shared_by_all_steps(identification, monkeypatch):
+    assert IDENTIFICATION_TIMEOUT_SECONDS == 40
     context = identification
     monkeypatch.setattr("medclue_api.identification.IDENTIFICATION_TIMEOUT_SECONDS", 0.5)
 
