@@ -1,14 +1,15 @@
 [project]
 name = "medclue"
 version = "0.1.0"
-description = ""
+description = "Android app to identify medications from photos and manage a personal medicine cabinet."
 readme = "../README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12,<3.13"
 authors = [
-    { name = "Flet developer", email = "you@example.com" }
+    { name = "Aiala Elejalde", email = "elejalde46@gmail.com" }
 ]
 dependencies = [
-    "flet>=1.0.5"
+    "flet>=1.0.5",
+    "httpx==0.28.1",
 ]
 
 [dependency-groups]
@@ -23,11 +24,10 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 
 [tool.flet]
-org = "com.mycompany"
-product = "medclue"
-company = "Flet"
-copyright = "Copyright (C) 2023-2026 by Flet"
-
+org = "com.aialaelejalde"
+product = "MedClue"
+company = "Aiala Elejalde"
+copyright = "Copyright (C) 2026 Aiala Elejalde"
 
 [tool.flet.app]
 path = "src"
