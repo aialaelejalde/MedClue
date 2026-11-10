@@ -17,7 +17,7 @@ from medclue_mobile.medications import (
     validate_medication,
 )
 from medclue_mobile.ui.components import medication_photo, soft_section
-from medclue_mobile.ui.theme import CARD_SPACING, SECTION_SPACING
+from medclue_mobile.ui.theme import CARD_SPACING, MIN_TOUCH_TARGET_SIZE, SECTION_SPACING
 
 
 FREQUENCY_LABELS = {
@@ -83,9 +83,11 @@ class MedicationForm(ft.Column):
             "Change photo" if self._photo else "Take photo",
             on_click=on_take_photo,
             disabled=on_take_photo is None,
+            expand=True,
         )
         self._remove_photo_button = ft.OutlinedButton(
-            "Remove photo", on_click=lambda event: self.set_photo(None), visible=bool(self._photo)
+            "Remove photo", on_click=lambda event: self.set_photo(None), visible=bool(self._photo),
+            expand=True,
         )
 
         official_uses = list(dict.fromkeys(official_uses or []))
@@ -132,7 +134,7 @@ class MedicationForm(ft.Column):
             frequency.unit if frequency else None,
         )
         self._interval_group = ft.Column(
-            controls=[self.frequency_value, self.frequency_unit], spacing=CARD_SPACING, tight=True,
+            controls=[self.frequency_value, ft.Row(controls=[self.frequency_unit])], spacing=CARD_SPACING, tight=True,
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
         )
         self.frequency_text = ft.TextField(label="My frequency instructions", value=(frequency.text or "") if frequency else "", multiline=True)
@@ -153,31 +155,33 @@ class MedicationForm(ft.Column):
         self.notes_field = ft.TextField(
             label="Additional notes", value=self._original.notes or "", multiline=True,
             hint_text="Write anything you'd like to remember about this medication...",
+            text_vertical_align=-1,
+            min_lines=3,
         )
 
         self.controls = [
             soft_section("Medication", [
                 self._photo_preview,
                 ft.Row(
-                    controls=[self._take_photo_button, self._remove_photo_button], wrap=True,
-                    alignment=ft.MainAxisAlignment.CENTER,
+                    controls=[self._take_photo_button, self._remove_photo_button],
+                    spacing=CARD_SPACING,
                 ),
-                self.name_field,
+                ft.Container(content=self.name_field, padding=ft.Padding.only(top=SECTION_SPACING - CARD_SPACING)),
                 ft.Text("Prescribed for", theme_style=ft.TextThemeStyle.TITLE_MEDIUM),
-                *self._use_options, self._own_reason, self._reason_group, self._unknown_reason,
+                *self._use_options, self._own_reason, self._reason_group, self._checkbox_row(self._unknown_reason),
             ]),
             soft_section("My instructions", [
                 ft.Text("How much were you told to take or use?"),
-                self.amount_custom, self._quantity_group, self.amount_text,
+                self._checkbox_row(self.amount_custom), self._quantity_group, self.amount_text,
                 ft.Text("How often were you told to take it?"),
-                self.frequency_type, self._interval_group, self.frequency_text,
+                ft.Row(controls=[self.frequency_type]), self._interval_group, self.frequency_text,
                 ft.Text("What instructions were you given about food?"),
-                self.food_type, self.food_text,
+                ft.Row(controls=[self.food_type]), self.food_text,
             ]),
             soft_section("Dates & notes", [
                 ft.Text("Prescription date", theme_style=ft.TextThemeStyle.TITLE_MEDIUM),
                 ft.Row(controls=[self._prescription_button, self._clear_prescription_button], wrap=True),
-                self.treatment_end_type, self._end_date_group, self.notes_field,
+                ft.Row(controls=[self.treatment_end_type]), self._end_date_group, self.notes_field,
             ]),
         ]
         self._fields = [
@@ -193,6 +197,27 @@ class MedicationForm(ft.Column):
     def has_changes(self) -> bool:
         """Include incomplete input so leaving cannot silently discard it."""
         return self._snapshot() != self._initial_values
+
+    def _checkbox_row(self, checkbox: ft.Checkbox) -> ft.Container:
+        """Align long checkbox labels and let them wrap within the form."""
+        label = checkbox.label
+        checkbox.label = None
+        checkbox.semantics_label = label
+        checkbox.visual_density = ft.VisualDensity.COMPACT
+
+        def toggle(event: ft.Event) -> None:
+            checkbox.value = not checkbox.value
+            self._options_changed(event)
+
+        return ft.Container(
+            content=ft.Row(
+                controls=[
+                    ft.Container(content=checkbox, height=MIN_TOUCH_TARGET_SIZE, alignment=ft.Alignment.CENTER, width=40),
+                    ft.Text(label, expand=True),
+                ], spacing=0,
+            ),
+            on_click=toggle,
+        )
 
     def get_medication(self) -> Medication:
         """Return a validated draft without saving or changing the original record."""
@@ -324,6 +349,8 @@ class MedicationForm(ft.Column):
 
 def _dropdown(label: str, choices: dict[str, str], value: str | None = None) -> ft.Dropdown:
     return ft.Dropdown(
+        expand=True,
+        expanded_insets=ft.Padding.all(0),
         label=label,
         value=value or "",
         options=[ft.DropdownOption(key="", text="Not selected")] + [

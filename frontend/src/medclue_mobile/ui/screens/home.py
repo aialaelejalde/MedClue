@@ -8,7 +8,7 @@ import flet as ft
 from medclue_mobile.cabinet import MedicationCabinet
 from medclue_mobile.medications import Medication
 from medclue_mobile.ui.components import medication_name, medication_photo, soft_card, use_chips
-from medclue_mobile.ui.theme import (ACCENT_COLOR, CARD_SPACING, CONTENT_PADDING, MIN_TOUCH_TARGET_SIZE, SCREEN_MARGIN)
+from medclue_mobile.ui.theme import (CARD_SPACING, CONTENT_PADDING, SCREEN_MARGIN)
 
 
 class HomeScreen(ft.Container):
@@ -25,24 +25,16 @@ class HomeScreen(ft.Container):
         self._on_identify = on_identify
         self._on_add = on_add
 
-        self._clear_button = ft.IconButton(
-            icon=ft.Icons.CLOSE,
-            tooltip="Clear search",
-            width=MIN_TOUCH_TARGET_SIZE,
-            height=MIN_TOUCH_TARGET_SIZE,
-            visible=True,
-            disabled=True,
-            style=ft.ButtonStyle(side=ft.BorderSide(1, ACCENT_COLOR)),
-            on_click=self._clear_search,
-        )
         self.search_field = ft.TextField(
             hint_text="Search name or use...",
             value="",
             prefix_icon=ft.Icons.SEARCH,
-            suffix=self._clear_button,
+            content_padding=ft.Padding.symmetric(horizontal=12, vertical=16),
             on_change=self._filters_changed,
         )
         self.sort_dropdown = ft.Dropdown(
+            expand=True,
+            expanded_insets=ft.Padding.all(0),
             label="Sort by",
             value="recently_added",
             options=[
@@ -52,6 +44,18 @@ class HomeScreen(ft.Container):
             on_select=self._filters_changed,
         )
         self._medication_list = ft.ListView(expand=True, spacing=CARD_SPACING)
+        self._no_results = ft.Column(
+            controls=[
+                ft.Container(
+                    content=ft.Text("No medications found", theme_style=ft.TextThemeStyle.TITLE_MEDIUM),
+                    expand=True,
+                ),
+                ft.OutlinedButton("Clear search", on_click=self._clear_search),
+            ],
+            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+            expand=True,
+            visible=False,
+        )
         self._empty_state = ft.Column(
             controls=[
                 ft.Container(
@@ -82,9 +86,10 @@ class HomeScreen(ft.Container):
                 controls=[
                     ft.Text("My medications", theme_style=ft.TextThemeStyle.HEADLINE_LARGE),
                     self.search_field,
-                    self.sort_dropdown,
+                    ft.Row(controls=[self.sort_dropdown]),
                     self._medication_list,
                     self._empty_state,
+                    self._no_results,
                 ],
                 spacing=CARD_SPACING,
                 expand=True,
@@ -96,8 +101,8 @@ class HomeScreen(ft.Container):
     def refresh(self) -> None:
         """Reload saved records while keeping the current search and sort order."""
         query = self.search_field.value or ""
-        self._clear_button.disabled = not bool(query)
         self._empty_state.visible = False
+        self._no_results.visible = False
         self._medication_list.visible = True
         try:
             medications = self._cabinet.list_medications(query, self.sort_dropdown.value)
@@ -111,10 +116,9 @@ class HomeScreen(ft.Container):
             if medications:
                 controls = [self._medication_card(medication) for medication in medications]
             elif query.strip():
-                controls = [
-                    ft.Text("No medications found", theme_style=ft.TextThemeStyle.TITLE_MEDIUM),
-                    ft.OutlinedButton("Clear search", on_click=self._clear_search),
-                ]
+                controls = []
+                self._medication_list.visible = False
+                self._no_results.visible = True
             else:
                 controls = []
                 self._empty_state.visible = True

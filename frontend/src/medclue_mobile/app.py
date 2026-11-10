@@ -68,7 +68,8 @@ class MedClueApp:
         self._page.on_disconnect = self.close
         self._page.on_close = self.close
         self._page.on_app_lifecycle_state_change = self._lifecycle_changed
-        self._view.controls = [
+        android_start = getattr(self._page, "platform", None) == ft.PagePlatform.ANDROID
+        self._view.controls = [ft.Container(expand=True)] if android_start else [
             ft.Container(
                 content=ft.Image(src="medclue_logo.png", width=300, fit=ft.BoxFit.CONTAIN, semantics_label="MedClue"),
                 alignment=ft.Alignment.CENTER,
@@ -79,7 +80,8 @@ class MedClueApp:
         if not self._page.views:
             self._page.views.append(self._view)
         self._page.update()
-        await asyncio.sleep(SPLASH_DURATION_SECONDS)
+        if not android_start:
+            await asyncio.sleep(SPLASH_DURATION_SECONDS)
         while not self._closed:
             try:
                 if self._database_path is None:

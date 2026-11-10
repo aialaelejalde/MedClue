@@ -12,7 +12,7 @@ from medclue_mobile.medications import Medication
 from medclue_mobile.photos import CameraPermissionError, compress_photo
 from medclue_mobile.ui.dialogs import (confirm_discard_changes, confirm_duplicate, show_error, show_save_success)
 from medclue_mobile.ui.medication_form import MedicationForm
-from medclue_mobile.ui.theme import CARD_SPACING, SCREEN_MARGIN
+from medclue_mobile.ui.theme import CARD_SPACING, MIN_TOUCH_TARGET_SIZE, SCREEN_MARGIN
 
 
 class AddMedicationScreen(ft.Container):
@@ -41,13 +41,25 @@ class AddMedicationScreen(ft.Container):
             suggested_name=suggested_name,
             on_take_photo=self._take_photo if on_take_photo is not None else None,
         )
-        self._save_button = ft.FilledButton("Save medication", on_click=self._save, expand=True)
+        self._save_button = ft.FilledButton(
+            "Save medication", on_click=self._save, expand=True, height=MIN_TOUCH_TARGET_SIZE,
+        )
+        self.form.controls.append(ft.Container(height=MIN_TOUCH_TARGET_SIZE + CARD_SPACING))
         self.content = ft.SafeArea(
             content=ft.Column(
                 controls=[
                     ft.Text("Add medication", theme_style=ft.TextThemeStyle.HEADLINE_LARGE),
-                    self.form,
-                    ft.Row(controls=[self._save_button]),
+                    ft.Stack(
+                        controls=[
+                            self.form,
+                            ft.Container(
+                                content=ft.Row(controls=[self._save_button]),
+                                left=0, right=0, bottom=0,
+                            ),
+                        ],
+                        fit=ft.StackFit.EXPAND,
+                        expand=True,
+                    ),
                 ],
                 spacing=CARD_SPACING,
                 expand=True,

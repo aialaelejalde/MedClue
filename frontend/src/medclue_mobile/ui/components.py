@@ -80,28 +80,31 @@ def use_chips(uses: list[str], *, compact: bool = False) -> ft.Row:
 
     def resize(event: ft.LayoutSizeChangeEvent) -> None:
         available = max(0, event.width)
-        # Bound chip widths so long reasons leave space for other uses.
-        widths = [min(120, max(48, len(use) * 7 + 26)) for use in uses]
-        visible = []
-        used_width = 0
-        for index, (chip, width) in enumerate(zip(chips, widths)):
-            remaining = len(uses) - index - 1
-            counter_width = 16 + len(str(remaining)) * 8 if remaining else 0
-            spacing = CARD_SPACING if visible else 0
-            reserved = counter_width + CARD_SPACING if remaining else 0
-            free_width = available - used_width - spacing - reserved
-            if free_width < min(48, width):
+        count = len(uses)
+        while count:
+            hidden_count = len(uses) - count
+            counter_width = 16 + len(str(hidden_count)) * 8 if hidden_count else 0
+            gaps = CARD_SPACING * (count if hidden_count else count - 1)
+            if count * 48 + gaps + counter_width <= available:
                 break
-            chip.width = min(width, free_width)
-            visible.append(chip)
-            used_width += spacing + chip.width
+            count -= 1
 
-        hidden_count = len(uses) - len(visible)
+        hidden_count = len(uses) - count
+        counter_width = 16 + len(str(hidden_count)) * 8 if hidden_count else 0
+        gaps = CARD_SPACING * (count if hidden_count else max(0, count - 1))
+        budget = max(0, available - gaps - counter_width)
+        preferred = [max(48, len(use) * 7 + 26) for use in uses[:count]]
+        extra = sum(width - 48 for width in preferred)
+        share = min(1, max(0, budget - count * 48) / extra) if extra else 0
+        visible = chips[:count]
+        for chip, width in zip(visible, preferred):
+            chip.width = 48 + (width - 48) * share
+
         if hidden_count:
             visible.append(ft.Text(
                 f"+{hidden_count}", color=TEXT_COLOR,
-                tooltip="\n".join(uses[len(visible):]),
-                width=min(available, 16 + len(str(hidden_count)) * 8),
+                tooltip="\n".join(uses[count:]),
+                width=min(available, counter_width),
                 max_lines=1,
                 overflow=ft.TextOverflow.ELLIPSIS,
             ))

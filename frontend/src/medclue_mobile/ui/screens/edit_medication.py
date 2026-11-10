@@ -131,4 +131,4 @@ class EditMedicationScreen(ft.Container):
         self.form.disabled = disabled
         self._save_button.disabled = disabled
         if self.parent is not None:
-            self.update()
+            self.page.update(self, self._save_button)

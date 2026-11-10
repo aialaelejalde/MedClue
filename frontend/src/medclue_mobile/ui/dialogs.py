@@ -4,7 +4,7 @@ import asyncio
 
 import flet as ft
 
-from medclue_mobile.ui.theme import ACCENT_COLOR, BACKGROUND_COLOR, CARD_RADIUS, CARD_SPACING, TEXT_COLOR
+from medclue_mobile.ui.theme import ACCENT_COLOR, BACKGROUND_COLOR, CARD_RADIUS, CARD_SPACING
 
 
 async def confirm_duplicate(page: ft.Page) -> bool:
@@ -79,7 +79,7 @@ async def show_photo_too_large(page: ft.Page) -> bool:
 
 def show_save_success(page: ft.Page) -> None:
     page.show_dialog(ft.SnackBar(
-        content=ft.Text("Medication saved successfully", color=TEXT_COLOR),
+        content=ft.Text("Medication saved successfully", color=BACKGROUND_COLOR),
         bgcolor=ACCENT_COLOR,
     ))
 

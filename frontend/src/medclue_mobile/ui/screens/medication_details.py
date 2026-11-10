@@ -59,7 +59,7 @@ class MedicationDetailsScreen(ft.Container):
         medication = self._medication
         controls = [
             medication_name(medication.name, theme_style=ft.TextThemeStyle.HEADLINE_LARGE),
-            medication_photo(medication.photo, height=240),
+            medication_photo(medication.photo, height=180, aspect_ratio=4 / 3, fit=ft.BoxFit.COVER),
         ]
         if medication.uses:
             controls.append(soft_section("Prescribed for", [use_chips(medication.uses)]))
