@@ -39,19 +39,19 @@ class MedicationDetailsScreen(ft.Container):
             shape=ft.CircleBorder(),
             on_click=self._edit,
         )
-        self._delete_button = ft.TextButton("Delete medication", on_click=self._delete)
+        self._delete_button = ft.OutlinedButton("Delete medication", on_click=self._delete)
         self.content = ft.SafeArea(
             content=ft.Column(
                 controls=[
                     ft.ListView(
-                        controls=[*self._saved_information(), self._delete_button],
+                        controls=[*self._saved_information(), self._delete_button, ft.Container(height=80)],
                         spacing=SECTION_SPACING,
                         expand=True,
                     ),
-                    ft.Row(controls=[self._edit_button], alignment=ft.MainAxisAlignment.END),
                 ],
                 spacing=CARD_SPACING,
                 expand=True,
+                horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
             )
         )
 

@@ -6,9 +6,11 @@ from medclue_mobile.ui.theme import (
     CARD_COLOR,
     CARD_RADIUS,
     CARD_SPACING,
+    ACCENT_COLOR,
     CONTENT_PADDING,
     ICON_SIZE,
     PRIMARY_COLOR,
+    TEXT_COLOR,
 )
 
 
@@ -35,6 +37,7 @@ def soft_section(title: str, controls: list[ft.Control]) -> ft.Container:
             controls=[ft.Text(title, theme_style=ft.TextThemeStyle.TITLE_LARGE), *controls],
             spacing=CARD_SPACING,
             tight=True,
+            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
         )
     )
 
@@ -50,17 +53,63 @@ def medication_name(
     )
 
 
-def use_chips(uses: list[str]) -> ft.Row:
-    """Create chips to display medication uses."""
-    return ft.Row(
-        controls=[
-            ft.Chip(label=ft.Text(use, theme_style=ft.TextThemeStyle.BODY_MEDIUM))
-            for use in uses
-        ],
-        wrap=True,
+def use_chips(uses: list[str], *, compact: bool = False) -> ft.Row:
+    """Keep long labels inside the available width without changing saved text."""
+    chips = [
+        ft.Container(
+            content=ft.Text(
+                use, color=TEXT_COLOR, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS,
+                theme_style=ft.TextThemeStyle.BODY_MEDIUM,
+            ),
+            padding=ft.Padding.symmetric(horizontal=12, vertical=8),
+            border=ft.Border.all(1, ACCENT_COLOR),
+            border_radius=24,
+            bgcolor=CARD_COLOR,
+            tooltip=use,
+        )
+        for use in uses
+    ]
+    row = ft.Row(
+        controls=chips if not compact else [],
+        wrap=not compact,
         spacing=CARD_SPACING,
         run_spacing=CARD_SPACING,
     )
+    if not compact or not uses:
+        return row
+
+    def resize(event: ft.LayoutSizeChangeEvent) -> None:
+        available = max(0, event.width)
+        # Bound chip widths so long reasons leave space for other uses.
+        widths = [min(120, max(48, len(use) * 7 + 26)) for use in uses]
+        visible = []
+        used_width = 0
+        for index, (chip, width) in enumerate(zip(chips, widths)):
+            remaining = len(uses) - index - 1
+            counter_width = 16 + len(str(remaining)) * 8 if remaining else 0
+            spacing = CARD_SPACING if visible else 0
+            reserved = counter_width + CARD_SPACING if remaining else 0
+            free_width = available - used_width - spacing - reserved
+            if free_width < min(48, width):
+                break
+            chip.width = min(width, free_width)
+            visible.append(chip)
+            used_width += spacing + chip.width
+
+        hidden_count = len(uses) - len(visible)
+        if hidden_count:
+            visible.append(ft.Text(
+                f"+{hidden_count}", color=TEXT_COLOR,
+                tooltip="\n".join(uses[len(visible):]),
+                width=min(available, 16 + len(str(hidden_count)) * 8),
+                max_lines=1,
+                overflow=ft.TextOverflow.ELLIPSIS,
+            ))
+        row.controls = visible
+        row.update()
+
+    row.on_size_change = resize
+    return row
 
 
 def medication_photo(
@@ -69,6 +118,7 @@ def medication_photo(
     height: float,
     width: float | None = None,
     fit: ft.BoxFit = ft.BoxFit.CONTAIN,
+    aspect_ratio: float | None = None,
 ) -> ft.Container:
     placeholder = ft.Icon(
         ft.Icons.CAMERA_ALT_OUTLINED,
@@ -80,17 +130,22 @@ def medication_photo(
         ft.Image(
             src=photo,
             height=height,
-            width=width,
+            width=width if width is not None else float("inf"),
             fit=fit,
             semantics_label="Medication photo",
             error_content=placeholder,
         )
         if photo else placeholder
     )
+    if photo and aspect_ratio is not None:
+        content.height = None
+        content.width = None
+        content = ft.Stack(controls=[content], fit=ft.StackFit.EXPAND)
     return ft.Container(
         content=content,
         width=width,
         height=height,
+        aspect_ratio=aspect_ratio,
         alignment=ft.Alignment.CENTER,
         bgcolor=CARD_COLOR,
         border_radius=CARD_RADIUS,

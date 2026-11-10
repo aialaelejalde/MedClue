@@ -27,6 +27,9 @@ from medclue_mobile.ui.screens.possible_matches import PossibleMatchesScreen
 from medclue_mobile.ui.theme import BACKGROUND_COLOR, CARD_SPACING, create_theme
 
 
+SPLASH_DURATION_SECONDS = 3
+
+
 class MedClueApp:
     def __init__(self, page: ft.Page, backend_url: str | None = None, *, database_path: Path | None = None):
         self._page = page
@@ -59,6 +62,7 @@ class MedClueApp:
     async def start(self) -> None:
         self._page.title = "MedClue"
         self._page.theme = create_theme()
+        self._page.bgcolor = BACKGROUND_COLOR
         self._page.theme_mode = ft.ThemeMode.LIGHT
         self._page.locale_configuration = ft.LocaleConfiguration(supported_locales=[ft.Locale("en", "GB")])
         self._page.on_disconnect = self.close
@@ -66,14 +70,16 @@ class MedClueApp:
         self._page.on_app_lifecycle_state_change = self._lifecycle_changed
         self._view.controls = [
             ft.Container(
-                content=ft.Image(src="medclue_logo.png", width=160, semantics_label="MedClue"),
+                content=ft.Image(src="medclue_logo.png", width=300, fit=ft.BoxFit.CONTAIN, semantics_label="MedClue"),
                 alignment=ft.Alignment.CENTER,
+                padding=24,
                 expand=True,
             )
         ]
         if not self._page.views:
             self._page.views.append(self._view)
         self._page.update()
+        await asyncio.sleep(SPLASH_DURATION_SECONDS)
         while not self._closed:
             try:
                 if self._database_path is None:
@@ -102,6 +108,13 @@ class MedClueApp:
         self._tab = tab
         self._navigation.selected_index = tab
         self._view.navigation_bar = self._navigation
+        if isinstance(screen, MedicationDetailsScreen):
+            self._view.floating_action_button = screen._edit_button
+        elif isinstance(screen, EditMedicationScreen):
+            self._view.floating_action_button = screen._save_button
+        else:
+            self._view.floating_action_button = None
+        self._view.floating_action_button_location = ft.FloatingActionButtonLocation.END_FLOAT
         self._view.can_pop = isinstance(screen, HomeScreen)
         self._view.controls = [screen]
         self._page.update()
@@ -293,14 +306,59 @@ class MedClueApp:
                     dialog.update()
 
         take_button = ft.FilledButton("Take photo", on_click=capture, disabled=True)
+        preview_width = 0
+        preview_height = 0
+        preview_ratio = 3 / 4
+        photos.camera.expand = False
+        photos.camera.left = 0
+        photos.camera.top = 0
+
+        def fit_preview() -> None:
+            if result.done() or self._closed or preview_width <= 0 or preview_height <= 0:
+                return
+            width = max(preview_width, preview_height * preview_ratio)
+            height = width / preview_ratio
+            photos.camera.width = width
+            photos.camera.height = height
+            photos.camera.left = (preview_width - width) / 2
+            photos.camera.top = (preview_height - height) / 2
+            photos.camera.update()
+
+        def resize_preview(event: ft.LayoutSizeChangeEvent) -> None:
+            nonlocal preview_width, preview_height
+            preview_width, preview_height = event.width, event.height
+            fit_preview()
+
+        def camera_changed(event: ft.Event) -> None:
+            nonlocal preview_ratio
+            ratio = event.aspect_ratio
+            if ratio is None or ratio <= 0:
+                return
+            orientation = event.preview_pause_orientation or event.locked_capture_orientation or event.device_orientation
+            landscape = orientation in (ft.DeviceOrientation.LANDSCAPE_LEFT, ft.DeviceOrientation.LANDSCAPE_RIGHT)
+            preview_ratio = max(ratio, 1 / ratio) if landscape else min(ratio, 1 / ratio)
+            fit_preview()
+
+        photos.camera.on_state_change = camera_changed
+        camera_frame = ft.Container(
+            content=ft.Stack(controls=[photos.camera]),
+            aspect_ratio=4 / 3,
+            clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+            border_radius=16,
+            on_size_change=resize_preview,
+        )
         dialog = ft.AlertDialog(
             title=ft.Text("Medication photo"),
             content=ft.Container(
-                width=320,
+                width=min(420, (self._page.width or 360) - 80),
                 content=ft.Column(
-                    controls=[ft.Container(content=photos.camera, height=240), take_button],
+                    controls=[
+                        camera_frame,
+                        ft.Row(controls=[take_button], alignment=ft.MainAxisAlignment.CENTER),
+                    ],
                     spacing=CARD_SPACING,
                     tight=True,
+                    horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
                 ),
             ),
             actions=[ft.TextButton("Cancel", on_click=cancel)],

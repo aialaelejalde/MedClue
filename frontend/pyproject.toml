@@ -35,5 +35,19 @@ copyright = "Copyright (C) 2026 Aiala Elejalde"
 [tool.flet.app]
 path = "src"
 
+[tool.flet.splash]
+color = "#FFFFFF"
+dark_color = "#FFFFFF"
+
+[tool.flet.boot_screen]
+name = "flet"
+
+[tool.flet.boot_screen.flet]
+theme_mode = "light"
+bgcolor_light = "#FFFFFF"
+
+[tool.flet.android]
+adaptive_icon_background = "#FFFFFF"
+
 [tool.flet.android.permission]
 "android.permission.CAMERA" = true

@@ -50,12 +50,13 @@ class EditMedicationScreen(ft.Container):
                 controls=[
                     ft.Text("Edit medication", theme_style=ft.TextThemeStyle.HEADLINE_LARGE),
                     self.form,
-                    ft.Row(controls=[self._save_button], alignment=ft.MainAxisAlignment.END),
                 ],
                 spacing=CARD_SPACING,
                 expand=True,
+                horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
             )
         )
+        self.form.controls.append(ft.Container(height=80))
 
     async def can_leave(self) -> bool:
         if self._saved_medication is not None:

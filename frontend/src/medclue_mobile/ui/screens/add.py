@@ -51,6 +51,7 @@ class AddMedicationScreen(ft.Container):
                 ],
                 spacing=CARD_SPACING,
                 expand=True,
+                horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
             )
         )
 

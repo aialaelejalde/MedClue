@@ -44,6 +44,15 @@ def create_theme() -> ft.Theme:
             outline_variant=ACCENT_COLOR,
         ),
         scaffold_bgcolor=BACKGROUND_COLOR,
+        system_overlay_style=ft.SystemOverlayStyle(
+            status_bar_color=BACKGROUND_COLOR,
+            status_bar_icon_brightness=ft.Brightness.DARK,
+            status_bar_brightness=ft.Brightness.LIGHT,
+            system_navigation_bar_color=BACKGROUND_COLOR,
+            system_navigation_bar_icon_brightness=ft.Brightness.DARK,
+            enforce_system_status_bar_contrast=False,
+            enforce_system_navigation_bar_contrast=False,
+        ),
         text_theme=ft.TextTheme(
             headline_large=ft.TextStyle(size=32, color=TEXT_COLOR),
             title_large=ft.TextStyle(size=22, color=TEXT_COLOR),

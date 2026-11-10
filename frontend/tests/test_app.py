@@ -36,6 +36,7 @@ VERIFIED_RESULT = {
 
 @pytest.fixture
 def app_context(tmp_path, monkeypatch):
+    monkeypatch.setattr(app_module, "SPLASH_DURATION_SECONDS", 0)
     page = SimpleNamespace(views=[ft.View()], update=Mock(), show_dialog=Mock())
     page.views[0].confirm_pop = AsyncMock()
     monkeypatch.setattr(ft.Control, "page", property(lambda self: page))
@@ -105,6 +106,75 @@ def test_app_starts_on_home(app_context):
         assert_screen(app_context.app, HomeScreen, 0)
         assert [item.label for item in app_context.app._navigation.destinations] == ["Home", "Identify", "Add"]
         app_context.session.identify.assert_not_awaited()
+    asyncio.run(run())
+
+
+def test_logo_stays_visible_for_three_seconds_before_home(app_context, monkeypatch):
+    monkeypatch.setattr(app_module, "SPLASH_DURATION_SECONDS", 3)
+
+    async def check_splash(duration):
+        assert duration == 3
+        splash = app_context.app._view.controls[0]
+        assert splash.content.src == "medclue_logo.png"
+        app_context.session.identify.assert_not_awaited()
+        assert app_context.app._screen is None
+
+    delay = AsyncMock(side_effect=check_splash)
+    monkeypatch.setattr(app_module.asyncio, "sleep", delay)
+
+    asyncio.run(app_context.app.start())
+
+    delay.assert_awaited_once_with(3)
+    assert_screen(app_context.app, HomeScreen, 0)
+
+
+def test_photo_dialog_fills_its_frame_without_distorting_the_camera(app_context, monkeypatch):
+    photos = SimpleNamespace(
+        camera=ft.Container(), initialize_camera=AsyncMock(),
+        capture=AsyncMock(return_value=b"new photo"), discard_photo=Mock(),
+    )
+    monkeypatch.setattr(app_module, "PhotoManager", lambda: photos)
+    app_context.page.width = 390
+    app_context.page.pop_dialog = Mock()
+    monkeypatch.setattr(ft.Control, "update", Mock())
+
+    async def run():
+        task = asyncio.create_task(app_context.app._take_photo())
+        await asyncio.sleep(0)
+        dialog = app_context.page.show_dialog.call_args.args[0]
+        frame, actions = dialog.content.content.controls
+        frame.on_size_change(SimpleNamespace(width=280, height=210))
+        assert photos.camera.width == pytest.approx(280)
+        assert photos.camera.height == pytest.approx(280 / (3 / 4))
+        assert photos.camera.top < 0
+
+        photos.camera.on_state_change(SimpleNamespace(
+            aspect_ratio=16 / 9, device_orientation=ft.DeviceOrientation.LANDSCAPE_LEFT,
+            locked_capture_orientation=None, preview_pause_orientation=None,
+        ))
+        assert photos.camera.width == pytest.approx(210 * 16 / 9)
+        assert photos.camera.height == pytest.approx(210)
+        assert photos.camera.left < 0
+
+        await actions.controls[0].on_click(None)
+        assert await task == b"new photo"
+        photos.discard_photo.assert_called_once()
+
+    asyncio.run(run())
+
+
+def test_navigation_only_keeps_floating_actions_on_details_and_edit(app_context):
+    async def run():
+        app = app_context.app
+        await app.start()
+        assert app._view.floating_action_button is None
+        await app._open_details(1)
+        assert app._view.floating_action_button is app._screen._edit_button
+        await app._open_edit(1)
+        assert app._view.floating_action_button is app._screen._save_button
+        await app._open_add()
+        assert app._view.floating_action_button is None
+
     asyncio.run(run())
 
 
@@ -239,7 +309,8 @@ def test_empty_cabinet_buttons_open_the_corresponding_section(app_context, butto
     async def run():
         app_context.cabinet.list_medications.return_value = []
         await app_context.app.start()
-        await app_context.app._screen._medication_list.controls[button_index].on_click(None)
+        actions = app_context.app._screen._empty_state.controls[1].controls
+        await actions[button_index - 1].on_click(None)
         assert_screen(app_context.app, screen_type, tab)
     asyncio.run(run())
 

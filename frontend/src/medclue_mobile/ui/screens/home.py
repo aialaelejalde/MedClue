@@ -8,7 +8,7 @@ import flet as ft
 from medclue_mobile.cabinet import MedicationCabinet
 from medclue_mobile.medications import Medication
 from medclue_mobile.ui.components import medication_name, medication_photo, soft_card, use_chips
-from medclue_mobile.ui.theme import (CARD_SPACING, CONTENT_PADDING, MIN_TOUCH_TARGET_SIZE, SCREEN_MARGIN)
+from medclue_mobile.ui.theme import (ACCENT_COLOR, CARD_SPACING, CONTENT_PADDING, MIN_TOUCH_TARGET_SIZE, SCREEN_MARGIN)
 
 
 class HomeScreen(ft.Container):
@@ -30,7 +30,9 @@ class HomeScreen(ft.Container):
             tooltip="Clear search",
             width=MIN_TOUCH_TARGET_SIZE,
             height=MIN_TOUCH_TARGET_SIZE,
-            visible=False,
+            visible=True,
+            disabled=True,
+            style=ft.ButtonStyle(side=ft.BorderSide(1, ACCENT_COLOR)),
             on_click=self._clear_search,
         )
         self.search_field = ft.TextField(
@@ -50,6 +52,31 @@ class HomeScreen(ft.Container):
             on_select=self._filters_changed,
         )
         self._medication_list = ft.ListView(expand=True, spacing=CARD_SPACING)
+        self._empty_state = ft.Column(
+            controls=[
+                ft.Container(
+                    content=ft.Text(
+                        "Your medicine cabinet is empty",
+                        theme_style=ft.TextThemeStyle.TITLE_MEDIUM,
+                        text_align=ft.TextAlign.CENTER,
+                    ),
+                    alignment=ft.Alignment.CENTER,
+                    expand=True,
+                ),
+                ft.Column(
+                    controls=[
+                        ft.FilledButton("Identify medication", on_click=self._identify),
+                        ft.OutlinedButton("Add medication manually", on_click=self._add),
+                    ],
+                    spacing=6,
+                    horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+                    tight=True,
+                ),
+            ],
+            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+            expand=True,
+            visible=False,
+        )
         self.content = ft.SafeArea(
             content=ft.Column(
                 controls=[
@@ -57,9 +84,11 @@ class HomeScreen(ft.Container):
                     self.search_field,
                     self.sort_dropdown,
                     self._medication_list,
+                    self._empty_state,
                 ],
                 spacing=CARD_SPACING,
                 expand=True,
+                horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
             )
         )
         self.refresh()
@@ -67,7 +96,9 @@ class HomeScreen(ft.Container):
     def refresh(self) -> None:
         """Reload saved records while keeping the current search and sort order."""
         query = self.search_field.value or ""
-        self._clear_button.visible = bool(query)
+        self._clear_button.disabled = not bool(query)
+        self._empty_state.visible = False
+        self._medication_list.visible = True
         try:
             medications = self._cabinet.list_medications(query, self.sort_dropdown.value)
         except (sqlite3.Error, OSError, ValueError):
@@ -82,14 +113,12 @@ class HomeScreen(ft.Container):
             elif query.strip():
                 controls = [
                     ft.Text("No medications found", theme_style=ft.TextThemeStyle.TITLE_MEDIUM),
-                    ft.TextButton("Clear search", on_click=self._clear_search),
+                    ft.OutlinedButton("Clear search", on_click=self._clear_search),
                 ]
             else:
-                controls = [
-                    ft.Text("Your medicine cabinet is empty", theme_style=ft.TextThemeStyle.TITLE_MEDIUM),
-                    ft.FilledButton("Identify medication", on_click=self._identify),
-                    ft.OutlinedButton("Add medication manually", on_click=self._add),
-                ]
+                controls = []
+                self._empty_state.visible = True
+                self._medication_list.visible = False
 
         self._medication_list.controls = controls
         if self.parent is not None:
@@ -106,21 +135,27 @@ class HomeScreen(ft.Container):
             photo.image = ft.DecorationImage(src=medication.photo, fit=ft.BoxFit.COVER)
 
         details = [medication_name(medication.name)]
+        details[0].max_lines = 2
+        details[0].overflow = ft.TextOverflow.ELLIPSIS
         if medication.uses:
-            details.append(use_chips(medication.uses))
+            details.append(use_chips(medication.uses, compact=True))
 
         return soft_card(
             ft.Row(
                 controls=[
                     photo,
                     ft.Container(
-                        content=ft.Column(controls=details, spacing=CARD_SPACING, tight=True),
+                        content=ft.Column(
+                            controls=details, spacing=6, tight=True,
+                            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+                            alignment=ft.MainAxisAlignment.CENTER,
+                        ),
                         padding=CONTENT_PADDING,
                         expand=True,
                     ),
                 ],
                 spacing=0,
-                intrinsic_height=True,
+                height=144,
                 vertical_alignment=ft.CrossAxisAlignment.STRETCH,
             ),
             on_click=open_medication,

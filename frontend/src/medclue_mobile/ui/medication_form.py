@@ -61,7 +61,10 @@ class MedicationForm(ft.Column):
         suggested_name: bool = False,
         on_take_photo: ft.ControlEventHandler[ft.TextButton] | None = None,
     ):
-        super().__init__(spacing=SECTION_SPACING, scroll=ft.ScrollMode.AUTO, expand=True)
+        super().__init__(
+            spacing=SECTION_SPACING, scroll=ft.ScrollMode.AUTO, expand=True,
+            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+        )
         self._original = deepcopy(medication) if medication is not None else Medication()
         self._photo = self._original.photo
         self._prescription_date = self._original.prescription_date
@@ -75,13 +78,13 @@ class MedicationForm(ft.Column):
                 if suggested_name else None
             ),
         )
-        self._photo_preview = medication_photo(self._photo, height=180)
-        self._take_photo_button = ft.TextButton(
+        self._photo_preview = medication_photo(self._photo, height=180, aspect_ratio=4 / 3, fit=ft.BoxFit.COVER)
+        self._take_photo_button = ft.OutlinedButton(
             "Change photo" if self._photo else "Take photo",
             on_click=on_take_photo,
             disabled=on_take_photo is None,
         )
-        self._remove_photo_button = ft.TextButton(
+        self._remove_photo_button = ft.OutlinedButton(
             "Remove photo", on_click=lambda event: self.set_photo(None), visible=bool(self._photo)
         )
 
@@ -99,7 +102,10 @@ class MedicationForm(ft.Column):
             ft.TextField(label="Reason", value=reason, multiline=True)
             for reason in [*custom_reasons, ""]
         ]
-        self._reason_group = ft.Column(controls=self._reason_fields, spacing=CARD_SPACING, tight=True)
+        self._reason_group = ft.Column(
+            controls=self._reason_fields, spacing=CARD_SPACING, tight=True,
+            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+        )
         self._unknown_reason = ft.Checkbox(label=UNKNOWN_REASON, value=UNKNOWN_REASON in self._original.uses)
 
         amount = self._original.amount
@@ -113,7 +119,9 @@ class MedicationForm(ft.Column):
             amount.unit if amount else None,
         )
         self.amount_text = ft.TextField(label="My amount or instructions", value=(amount.text or "") if amount else "", multiline=True)
-        self._quantity_group = ft.Column(controls=[self.amount_value, self.amount_unit], spacing=CARD_SPACING, tight=True)
+        self.amount_value.expand = True
+        self.amount_unit.expand = True
+        self._quantity_group = ft.Row(controls=[self.amount_value, self.amount_unit], spacing=CARD_SPACING)
 
         frequency = self._original.frequency
         self.frequency_type = _dropdown("Frequency", FREQUENCY_LABELS, frequency.type if frequency else None)
@@ -123,7 +131,10 @@ class MedicationForm(ft.Column):
             "Time unit", {unit: unit.capitalize() for unit in FREQUENCY_UNITS},
             frequency.unit if frequency else None,
         )
-        self._interval_group = ft.Column(controls=[self.frequency_value, self.frequency_unit], spacing=CARD_SPACING, tight=True)
+        self._interval_group = ft.Column(
+            controls=[self.frequency_value, self.frequency_unit], spacing=CARD_SPACING, tight=True,
+            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+        )
         self.frequency_text = ft.TextField(label="My frequency instructions", value=(frequency.text or "") if frequency else "", multiline=True)
 
         food = self._original.food
@@ -131,13 +142,13 @@ class MedicationForm(ft.Column):
         self.food_type.on_select = self._options_changed
         self.food_text = ft.TextField(label="My food instructions", value=(food.text or "") if food else "", multiline=True)
 
-        self._prescription_button = ft.TextButton(on_click=lambda event: self._pick_date(False))
-        self._clear_prescription_button = ft.TextButton("Clear date", on_click=lambda event: self._set_date(False, None))
+        self._prescription_button = ft.OutlinedButton(on_click=lambda event: self._pick_date(False))
+        self._clear_prescription_button = ft.OutlinedButton("Clear date", on_click=lambda event: self._set_date(False, None))
         treatment_end = self._original.treatment_end
         self.treatment_end_type = _dropdown("End of treatment", TREATMENT_END_LABELS, treatment_end.type if treatment_end else None)
         self.treatment_end_type.on_select = self._options_changed
-        self._end_button = ft.TextButton(on_click=lambda event: self._pick_date(True))
-        self._clear_end_button = ft.TextButton("Clear date", on_click=lambda event: self._set_date(True, None))
+        self._end_button = ft.OutlinedButton(on_click=lambda event: self._pick_date(True))
+        self._clear_end_button = ft.OutlinedButton("Clear date", on_click=lambda event: self._set_date(True, None))
         self._end_date_group = ft.Row(controls=[self._end_button, self._clear_end_button], wrap=True)
         self.notes_field = ft.TextField(
             label="Additional notes", value=self._original.notes or "", multiline=True,
@@ -147,7 +158,10 @@ class MedicationForm(ft.Column):
         self.controls = [
             soft_section("Medication", [
                 self._photo_preview,
-                ft.Row(controls=[self._take_photo_button, self._remove_photo_button], wrap=True),
+                ft.Row(
+                    controls=[self._take_photo_button, self._remove_photo_button], wrap=True,
+                    alignment=ft.MainAxisAlignment.CENTER,
+                ),
                 self.name_field,
                 ft.Text("Prescribed for", theme_style=ft.TextThemeStyle.TITLE_MEDIUM),
                 *self._use_options, self._own_reason, self._reason_group, self._unknown_reason,
@@ -207,14 +221,17 @@ class MedicationForm(ft.Column):
         if photo is not None and (not isinstance(photo, bytes) or not photo):
             raise ValueError("The photo must contain image bytes.")
         self._photo = photo
-        self._photo_preview.content = medication_photo(photo, height=180).content
+        self._photo_preview.content = medication_photo(
+            photo, height=180, aspect_ratio=4 / 3, fit=ft.BoxFit.COVER,
+        ).content
         self._take_photo_button.content = "Change photo" if photo else "Take photo"
         self._remove_photo_button.visible = bool(photo)
         self._refresh()
 
     def _get_amount(self) -> Amount | None:
         if self.amount_custom.value:
-            return Amount("custom", text=_optional_text(self.amount_text.value))
+            text = _optional_text(self.amount_text.value)
+            return Amount("custom", text=text) if text else None
         if self.amount_value.value.strip() or self.amount_unit.value:
             return Amount(
                 "quantity", value=_number(self.amount_value.value, "Quantity"),
@@ -232,14 +249,18 @@ class MedicationForm(ft.Column):
                 unit=self.frequency_unit.value or None,
             )
         if frequency_type == "custom":
-            return Frequency(frequency_type, text=_optional_text(self.frequency_text.value))
+            text = _optional_text(self.frequency_text.value)
+            return Frequency(frequency_type, text=text) if text else None
         return Frequency(frequency_type)
 
     def _get_food(self) -> FoodInstructions | None:
         food_type = self.food_type.value
         if not food_type:
             return None
-        return FoodInstructions(food_type, text=_optional_text(self.food_text.value) if food_type == "custom" else None)
+        if food_type == "custom":
+            text = _optional_text(self.food_text.value)
+            return FoodInstructions(food_type, text=text) if text else None
+        return FoodInstructions(food_type)
 
     def _get_treatment_end(self) -> TreatmentEnd | None:
         end_type = self.treatment_end_type.value
