@@ -42,7 +42,7 @@ class IdentificationResultScreen(ft.Container):
         )
 
         controls = [
-            medication_photo(photo, height=240),
+            medication_photo(photo, height=180, aspect_ratio=4 / 3, fit=ft.BoxFit.COVER),
             medication_name(name, theme_style=ft.TextThemeStyle.HEADLINE_LARGE),
         ]
         if self._official_uses:

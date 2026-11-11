@@ -9,7 +9,7 @@ PRIMARY_COLOR = "#687FA5"
 ACCENT_COLOR = "#B9A3D4"
 TEXT_COLOR = "#30394F"
 
-FONT_FAMILY = "Roboto"
+FONT_FAMILY = "Inter"
 SCREEN_MARGIN = 16
 CARD_SPACING = 12
 CONTENT_PADDING = 16
@@ -54,12 +54,12 @@ def create_theme() -> ft.Theme:
             enforce_system_navigation_bar_contrast=False,
         ),
         text_theme=ft.TextTheme(
-            headline_large=ft.TextStyle(size=32, color=TEXT_COLOR),
-            title_large=ft.TextStyle(size=22, color=TEXT_COLOR),
-            title_medium=ft.TextStyle(size=16, color=TEXT_COLOR, weight=ft.FontWeight.W_500),
-            body_large=ft.TextStyle(size=16, color=TEXT_COLOR),
-            body_medium=ft.TextStyle(size=14, color=TEXT_COLOR),
-            body_small=ft.TextStyle(size=12, color=TEXT_COLOR),
+            headline_large=ft.TextStyle(size=32, color=TEXT_COLOR, font_family=FONT_FAMILY),
+            title_large=ft.TextStyle(size=22, color=TEXT_COLOR, font_family=FONT_FAMILY),
+            title_medium=ft.TextStyle(size=16, color=TEXT_COLOR, font_family=FONT_FAMILY, weight=ft.FontWeight.W_500),
+            body_large=ft.TextStyle(size=16, color=TEXT_COLOR, font_family=FONT_FAMILY),
+            body_medium=ft.TextStyle(size=14, color=TEXT_COLOR, font_family=FONT_FAMILY),
+            body_small=ft.TextStyle(size=12, color=TEXT_COLOR, font_family=FONT_FAMILY),
         ),
         card_theme=ft.CardTheme(
             color=CARD_COLOR,
@@ -69,7 +69,7 @@ def create_theme() -> ft.Theme:
         chip_theme=ft.ChipTheme(
             bgcolor=CARD_COLOR,
             selected_color=ACCENT_COLOR,
-            label_text_style=ft.TextStyle(size=14, color=TEXT_COLOR),
+            label_text_style=ft.TextStyle(size=14, color=TEXT_COLOR, font_family=FONT_FAMILY),
             border_side=ft.BorderSide(color=ACCENT_COLOR),
             shape=ft.StadiumBorder(),
         ),

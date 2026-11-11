@@ -24,7 +24,7 @@ from medclue_mobile.ui.screens.identifying_medication import IdentifyingMedicati
 from medclue_mobile.ui.screens.medication_details import MedicationDetailsScreen
 from medclue_mobile.ui.screens.possible_match_result import PossibleMatchResultScreen
 from medclue_mobile.ui.screens.possible_matches import PossibleMatchesScreen
-from medclue_mobile.ui.theme import BACKGROUND_COLOR, CARD_SPACING, create_theme
+from medclue_mobile.ui.theme import BACKGROUND_COLOR, CARD_SPACING, FONT_FAMILY, create_theme
 
 
 DEFAULT_BACKEND_URL = "https://medclue-api-377942439711.europe-southwest1.run.app"
@@ -61,6 +61,7 @@ class MedClueApp:
 
     async def start(self) -> None:
         self._page.title = "MedClue"
+        self._page.fonts = {FONT_FAMILY: "fonts/Inter.ttf"}
         self._page.theme = create_theme()
         self._page.bgcolor = BACKGROUND_COLOR
         self._page.theme_mode = ft.ThemeMode.LIGHT

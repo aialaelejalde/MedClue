@@ -52,12 +52,12 @@ class PossibleMatchResultScreen(ft.Container):
         self._on_add = on_add
         self._busy = False
         self._retry_button = ft.FilledButton(
-            "Try again", on_click=self._retry, visible=status in ("connection_error", "timeout")
+            "Try again", on_click=self._retry, visible=status in ("connection_error", "timeout"),
         )
         self._retake_button = ft.OutlinedButton(
-            "Retake photo", on_click=self._retake, visible=status != "connection_error"
+            "Retake photo", on_click=self._retake, visible=status != "connection_error",
         )
-        self._add_button = ft.TextButton("Add medication manually", on_click=self._add)
+        self._add_button = ft.OutlinedButton("Add medication manually", on_click=self._add)
 
         if status == "not_identified":
             title = "Medication not identified"
@@ -81,25 +81,45 @@ class PossibleMatchResultScreen(ft.Container):
             )
 
         controls = [
-            medication_photo(photo, height=240),
-            ft.Text(title, theme_style=ft.TextThemeStyle.HEADLINE_LARGE),
+            ft.Text(title, theme_style=ft.TextThemeStyle.HEADLINE_LARGE, text_align=ft.TextAlign.CENTER),
         ]
         if name is not None:
             if status != "no_match":
-                controls.append(ft.Text("Possible match", theme_style=ft.TextThemeStyle.TITLE_LARGE))
-            controls.append(medication_name(name))
-        controls.append(ft.Text(message, theme_style=ft.TextThemeStyle.BODY_LARGE))
+                controls.append(ft.Text(
+                    "Possible match", theme_style=ft.TextThemeStyle.TITLE_LARGE, text_align=ft.TextAlign.CENTER,
+                ))
+            name_text = medication_name(name)
+            name_text.text_align = ft.TextAlign.CENTER
+            controls.append(name_text)
+        controls.append(ft.Text(
+            message, theme_style=ft.TextThemeStyle.BODY_LARGE, text_align=ft.TextAlign.CENTER,
+        ))
         self.content = ft.SafeArea(
             content=ft.Column(
                 controls=[
-                    ft.ListView(controls=controls, spacing=SECTION_SPACING, expand=True),
-                    ft.Row(
-                        controls=[self._retry_button, self._retake_button, self._add_button],
-                        wrap=True,
+                    medication_photo(photo, height=180, aspect_ratio=4 / 3, fit=ft.BoxFit.COVER),
+                    ft.Column(
+                        controls=controls,
+                        spacing=SECTION_SPACING,
+                        alignment=ft.MainAxisAlignment.CENTER,
+                        horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+                        scroll=ft.ScrollMode.AUTO,
+                        expand=True,
+                    ),
+                    ft.Column(
+                        controls=[
+                            self._retry_button,
+                            self._retake_button,
+                            self._add_button,
+                        ],
+                        spacing=6,
+                        horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+                        tight=True,
                     ),
                 ],
                 spacing=CARD_SPACING,
                 expand=True,
+                horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
             )
         )
 

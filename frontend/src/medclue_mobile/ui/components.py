@@ -24,6 +24,12 @@ def soft_card(
         content=content,
         bgcolor=CARD_COLOR,
         border_radius=CARD_RADIUS,
+        shadow=ft.BoxShadow(
+            color=ft.Colors.with_opacity(0.08, TEXT_COLOR),
+            blur_radius=8,
+            spread_radius=0,
+            offset=ft.Offset(0, 1),
+        ),
         padding=padding,
         clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
         ink=on_click is not None,
