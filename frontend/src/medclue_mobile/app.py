@@ -27,10 +27,6 @@ from medclue_mobile.ui.screens.possible_matches import PossibleMatchesScreen
 from medclue_mobile.ui.theme import BACKGROUND_COLOR, CARD_SPACING, create_theme
 
 
-SPLASH_DURATION_SECONDS = 3
-SPLASH_LOGO_WIDTH = 288
-
-
 class MedClueApp:
     def __init__(self, page: ft.Page, backend_url: str | None = None, *, database_path: Path | None = None):
         self._page = page
@@ -69,18 +65,9 @@ class MedClueApp:
         self._page.on_disconnect = self.close
         self._page.on_close = self.close
         self._page.on_app_lifecycle_state_change = self._lifecycle_changed
-        self._view.controls = [
-            ft.Container(
-                content=ft.Image(src="medclue_logo.png", width=SPLASH_LOGO_WIDTH, fit=ft.BoxFit.CONTAIN, semantics_label="MedClue"),
-                alignment=ft.Alignment.CENTER,
-                padding=24,
-                expand=True,
-            )
-        ]
+        self._view.controls = []
         if not self._page.views:
             self._page.views.append(self._view)
-        self._page.update()
-        await asyncio.sleep(SPLASH_DURATION_SECONDS)
         while not self._closed:
             try:
                 if self._database_path is None:

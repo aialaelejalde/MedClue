@@ -147,7 +147,7 @@ class MedicationForm(ft.Column):
         self._prescription_button = ft.OutlinedButton(on_click=lambda event: self._pick_date(False))
         self._clear_prescription_button = ft.OutlinedButton("Clear date", on_click=lambda event: self._set_date(False, None))
         treatment_end = self._original.treatment_end
-        self.treatment_end_type = _dropdown("End of treatment", TREATMENT_END_LABELS, treatment_end.type if treatment_end else None)
+        self.treatment_end_type = _dropdown(None, TREATMENT_END_LABELS, treatment_end.type if treatment_end else None)
         self.treatment_end_type.on_select = self._options_changed
         self._end_button = ft.OutlinedButton(on_click=lambda event: self._pick_date(True))
         self._clear_end_button = ft.OutlinedButton("Clear date", on_click=lambda event: self._set_date(True, None))
@@ -189,7 +189,10 @@ class MedicationForm(ft.Column):
                 _field_group([
                     ft.Row(controls=[self._prescription_button, self._clear_prescription_button], wrap=True),
                 ], title="Prescription date"),
-                _field_group([ft.Row(controls=[self.treatment_end_type]), self._end_date_group]),
+                _field_group(
+                    [ft.Row(controls=[self.treatment_end_type]), self._end_date_group],
+                    title="End of treatment",
+                ),
                 self.notes_field,
             ]),
         ]
@@ -371,7 +374,7 @@ def _field_group(controls: list[ft.Control], *, title: str | None = None) -> ft.
     )
 
 
-def _dropdown(label: str, choices: dict[str, str], value: str | None = None) -> ft.Dropdown:
+def _dropdown(label: str | None, choices: dict[str, str], value: str | None = None) -> ft.Dropdown:
     return ft.Dropdown(
         expand=True,
         expanded_insets=ft.Padding.all(0),
