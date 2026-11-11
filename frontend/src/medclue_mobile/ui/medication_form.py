@@ -17,7 +17,7 @@ from medclue_mobile.medications import (
     validate_medication,
 )
 from medclue_mobile.ui.components import medication_photo, soft_section
-from medclue_mobile.ui.theme import CARD_SPACING, MIN_TOUCH_TARGET_SIZE, SECTION_SPACING
+from medclue_mobile.ui.theme import CARD_SPACING, CONTENT_PADDING, MIN_TOUCH_TARGET_SIZE, SECTION_SPACING
 
 
 FREQUENCY_LABELS = {
@@ -156,32 +156,41 @@ class MedicationForm(ft.Column):
             label="Additional notes", value=self._original.notes or "", multiline=True,
             hint_text="Write anything you'd like to remember about this medication...",
             text_vertical_align=-1,
+            align_label_with_hint=True,
             min_lines=3,
         )
 
         self.controls = [
-            soft_section("Medication", [
-                self._photo_preview,
-                ft.Row(
-                    controls=[self._take_photo_button, self._remove_photo_button],
-                    spacing=CARD_SPACING,
-                ),
-                ft.Container(content=self.name_field, padding=ft.Padding.only(top=SECTION_SPACING - CARD_SPACING)),
-                ft.Text("Prescribed for", theme_style=ft.TextThemeStyle.TITLE_MEDIUM),
-                *self._use_options, self._own_reason, self._reason_group, self._checkbox_row(self._unknown_reason),
+            _form_section("Medication", [
+                _field_group([
+                    self._photo_preview,
+                    ft.Row(
+                        controls=[self._take_photo_button, self._remove_photo_button],
+                        spacing=CARD_SPACING,
+                    ),
+                ]),
+                self.name_field,
+                _field_group([
+                    *self._use_options, self._own_reason, self._reason_group, self._checkbox_row(self._unknown_reason),
+                ], title="Prescribed for"),
             ]),
-            soft_section("My instructions", [
-                ft.Text("How much were you told to take or use?"),
-                self._checkbox_row(self.amount_custom), self._quantity_group, self.amount_text,
-                ft.Text("How often were you told to take it?"),
-                ft.Row(controls=[self.frequency_type]), self._interval_group, self.frequency_text,
-                ft.Text("What instructions were you given about food?"),
-                ft.Row(controls=[self.food_type]), self.food_text,
+            _form_section("My instructions", [
+                _field_group([
+                    self._checkbox_row(self.amount_custom), self._quantity_group, self.amount_text,
+                ], title="How much were you told to take or use?"),
+                _field_group([
+                    ft.Row(controls=[self.frequency_type]), self._interval_group, self.frequency_text,
+                ], title="How often were you told to take it?"),
+                _field_group([
+                    ft.Row(controls=[self.food_type]), self.food_text,
+                ], title="What instructions were you given about food?"),
             ]),
-            soft_section("Dates & notes", [
-                ft.Text("Prescription date", theme_style=ft.TextThemeStyle.TITLE_MEDIUM),
-                ft.Row(controls=[self._prescription_button, self._clear_prescription_button], wrap=True),
-                ft.Row(controls=[self.treatment_end_type]), self._end_date_group, self.notes_field,
+            _form_section("Dates & notes", [
+                _field_group([
+                    ft.Row(controls=[self._prescription_button, self._clear_prescription_button], wrap=True),
+                ], title="Prescription date"),
+                _field_group([ft.Row(controls=[self.treatment_end_type]), self._end_date_group]),
+                self.notes_field,
             ]),
         ]
         self._fields = [
@@ -345,6 +354,21 @@ class MedicationForm(ft.Column):
     def _refresh(self) -> None:
         if self.parent is not None:
             self.update()
+
+
+def _form_section(title: str, groups: list[ft.Control]) -> ft.Container:
+    return soft_section(title, [ft.Column(
+        controls=groups, spacing=SECTION_SPACING, tight=True,
+        horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+    )], spacing=CONTENT_PADDING)
+
+
+def _field_group(controls: list[ft.Control], *, title: str | None = None) -> ft.Column:
+    return ft.Column(
+        controls=([ft.Text(title, theme_style=ft.TextThemeStyle.TITLE_MEDIUM)] if title else []) + controls,
+        spacing=CONTENT_PADDING, tight=True,
+        horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+    )
 
 
 def _dropdown(label: str, choices: dict[str, str], value: str | None = None) -> ft.Dropdown:

@@ -28,6 +28,7 @@ from medclue_mobile.ui.theme import BACKGROUND_COLOR, CARD_SPACING, create_theme
 
 
 SPLASH_DURATION_SECONDS = 3
+SPLASH_LOGO_WIDTH = 288
 
 
 class MedClueApp:
@@ -68,10 +69,9 @@ class MedClueApp:
         self._page.on_disconnect = self.close
         self._page.on_close = self.close
         self._page.on_app_lifecycle_state_change = self._lifecycle_changed
-        android_start = getattr(self._page, "platform", None) == ft.PagePlatform.ANDROID
-        self._view.controls = [ft.Container(expand=True)] if android_start else [
+        self._view.controls = [
             ft.Container(
-                content=ft.Image(src="medclue_logo.png", width=300, fit=ft.BoxFit.CONTAIN, semantics_label="MedClue"),
+                content=ft.Image(src="medclue_logo.png", width=SPLASH_LOGO_WIDTH, fit=ft.BoxFit.CONTAIN, semantics_label="MedClue"),
                 alignment=ft.Alignment.CENTER,
                 padding=24,
                 expand=True,
@@ -80,8 +80,7 @@ class MedClueApp:
         if not self._page.views:
             self._page.views.append(self._view)
         self._page.update()
-        if not android_start:
-            await asyncio.sleep(SPLASH_DURATION_SECONDS)
+        await asyncio.sleep(SPLASH_DURATION_SECONDS)
         while not self._closed:
             try:
                 if self._database_path is None:
@@ -307,7 +306,7 @@ class MedClueApp:
                 if dialog.open and not self._closed:
                     dialog.update()
 
-        take_button = ft.FilledButton("Take photo", on_click=capture, disabled=True)
+        take_button = ft.FilledButton("Take photo", on_click=capture, disabled=True, expand=True)
         preview_width = 0
         preview_height = 0
         preview_ratio = 3 / 4
@@ -356,7 +355,7 @@ class MedClueApp:
                 content=ft.Column(
                     controls=[
                         camera_frame,
-                        ft.Row(controls=[take_button], alignment=ft.MainAxisAlignment.CENTER),
+                        ft.Row(controls=[take_button]),
                     ],
                     spacing=CARD_SPACING,
                     tight=True,

@@ -10,9 +10,10 @@ import flet as ft
 from medclue_mobile.cabinet import DuplicateMedicationError, MedicationCabinet
 from medclue_mobile.medications import Medication, validate_medication
 from medclue_mobile.photos import CameraPermissionError, compress_photo
+from medclue_mobile.ui.components import floating_action_spacer
 from medclue_mobile.ui.dialogs import (confirm_discard_changes, confirm_duplicate, show_error, show_save_success)
 from medclue_mobile.ui.medication_form import MedicationForm
-from medclue_mobile.ui.theme import CARD_SPACING, SCREEN_MARGIN
+from medclue_mobile.ui.theme import CARD_SPACING, SCREEN_MARGIN, SECTION_SPACING
 
 
 class EditMedicationScreen(ft.Container):
@@ -56,7 +57,7 @@ class EditMedicationScreen(ft.Container):
                 horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
             )
         )
-        self.form.controls.append(ft.Container(height=80))
+        self.form.controls.append(floating_action_spacer(self._save_button, spacing=SECTION_SPACING))
 
     async def can_leave(self) -> bool:
         if self._saved_medication is not None:

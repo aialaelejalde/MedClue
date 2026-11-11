@@ -109,13 +109,16 @@ def test_app_starts_on_home(app_context):
     asyncio.run(run())
 
 
-def test_logo_stays_visible_for_three_seconds_before_home(app_context, monkeypatch):
+@pytest.mark.parametrize("platform", [ft.PagePlatform.ANDROID, ft.PagePlatform.WINDOWS])
+def test_logo_stays_visible_for_three_seconds_before_home(app_context, monkeypatch, platform):
+    app_context.page.platform = platform
     monkeypatch.setattr(app_module, "SPLASH_DURATION_SECONDS", 3)
 
     async def check_splash(duration):
         assert duration == 3
         splash = app_context.app._view.controls[0]
         assert splash.content.src == "medclue_logo.png"
+        assert splash.content.width == app_module.SPLASH_LOGO_WIDTH
         app_context.session.identify.assert_not_awaited()
         assert app_context.app._screen is None
 
@@ -143,6 +146,7 @@ def test_photo_dialog_fills_its_frame_without_distorting_the_camera(app_context,
         await asyncio.sleep(0)
         dialog = app_context.page.show_dialog.call_args.args[0]
         frame, actions = dialog.content.content.controls
+        assert actions.controls[0].expand
         frame.on_size_change(SimpleNamespace(width=280, height=210))
         assert photos.camera.width == pytest.approx(280)
         assert photos.camera.height == pytest.approx(280 / (3 / 4))

@@ -8,10 +8,10 @@ import flet as ft
 
 from medclue_mobile.cabinet import MedicationCabinet
 from medclue_mobile.medications import Medication, validate_medication
-from medclue_mobile.ui.components import medication_name, medication_photo, soft_section, use_chips
+from medclue_mobile.ui.components import floating_action_spacer, medication_name, medication_photo, soft_section, use_chips
 from medclue_mobile.ui.dialogs import confirm_delete_medication, show_error
 from medclue_mobile.ui.medication_form import (AMOUNT_UNIT_LABELS, FOOD_LABELS, FREQUENCY_LABELS, TREATMENT_END_LABELS)
-from medclue_mobile.ui.theme import CARD_SPACING, SCREEN_MARGIN, SECTION_SPACING
+from medclue_mobile.ui.theme import CARD_SPACING, SCREEN_MARGIN
 
 
 class MedicationDetailsScreen(ft.Container):
@@ -44,8 +44,11 @@ class MedicationDetailsScreen(ft.Container):
             content=ft.Column(
                 controls=[
                     ft.ListView(
-                        controls=[*self._saved_information(), self._delete_button, ft.Container(height=80)],
-                        spacing=SECTION_SPACING,
+                        controls=[
+                            *self._saved_information(), self._delete_button,
+                            floating_action_spacer(self._edit_button, spacing=CARD_SPACING),
+                        ],
+                        spacing=CARD_SPACING,
                         expand=True,
                     ),
                 ],

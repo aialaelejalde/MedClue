@@ -31,11 +31,11 @@ def soft_card(
     )
 
 
-def soft_section(title: str, controls: list[ft.Control]) -> ft.Container:
+def soft_section(title: str, controls: list[ft.Control], *, spacing: int = CARD_SPACING) -> ft.Container:
     return soft_card(
         ft.Column(
             controls=[ft.Text(title, theme_style=ft.TextThemeStyle.TITLE_LARGE), *controls],
-            spacing=CARD_SPACING,
+            spacing=spacing,
             tight=True,
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
         )
@@ -53,66 +53,126 @@ def medication_name(
     )
 
 
-def use_chips(uses: list[str], *, compact: bool = False) -> ft.Row:
-    """Keep long labels inside the available width without changing saved text."""
-    chips = [
-        ft.Container(
-            content=ft.Text(
-                use, color=TEXT_COLOR, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS,
-                theme_style=ft.TextThemeStyle.BODY_MEDIUM,
-            ),
-            padding=ft.Padding.symmetric(horizontal=12, vertical=8),
-            border=ft.Border.all(1, ACCENT_COLOR),
-            border_radius=24,
-            bgcolor=CARD_COLOR,
-            tooltip=use,
-        )
-        for use in uses
-    ]
-    row = ft.Row(
-        controls=chips if not compact else [],
-        wrap=not compact,
+def _use_chip(use: str) -> ft.Container:
+    return ft.Container(
+        content=ft.Text(
+            use, color=TEXT_COLOR, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS,
+            theme_style=ft.TextThemeStyle.BODY_MEDIUM,
+        ),
+        padding=ft.Padding.symmetric(horizontal=12, vertical=8),
+        border=ft.Border.all(1, ACCENT_COLOR),
+        border_radius=24,
+        bgcolor=CARD_COLOR,
+        tooltip=use,
+    )
+
+
+def use_chips(uses: list[str], *, compact: bool = False) -> ft.Control:
+    """Keep original labels and measure compact chips using the device's font."""
+    if compact and uses:
+        return _CompactUseChips(uses)
+    return ft.Row(
+        controls=[_use_chip(use) for use in uses],
+        wrap=True,
         spacing=CARD_SPACING,
         run_spacing=CARD_SPACING,
     )
-    if not compact or not uses:
-        return row
 
-    def resize(event: ft.LayoutSizeChangeEvent) -> None:
-        available = max(0, event.width)
-        count = len(uses)
-        while count:
-            hidden_count = len(uses) - count
-            counter_width = 16 + len(str(hidden_count)) * 8 if hidden_count else 0
-            gaps = CARD_SPACING * (count if hidden_count else count - 1)
-            if count * 48 + gaps + counter_width <= available:
-                break
-            count -= 1
 
-        hidden_count = len(uses) - count
-        counter_width = 16 + len(str(hidden_count)) * 8 if hidden_count else 0
-        gaps = CARD_SPACING * (count if hidden_count else max(0, count - 1))
-        budget = max(0, available - gaps - counter_width)
-        preferred = [max(48, len(use) * 7 + 26) for use in uses[:count]]
-        extra = sum(width - 48 for width in preferred)
-        share = min(1, max(0, budget - count * 48) / extra) if extra else 0
-        visible = chips[:count]
-        for chip, width in zip(visible, preferred):
-            chip.width = 48 + (width - 48) * share
+class _CompactUseChips(ft.Stack):
+    """Measure natural widths offscreen, then fit one row with an overflow count."""
 
-        if hidden_count:
-            visible.append(ft.Text(
-                f"+{hidden_count}", color=TEXT_COLOR,
-                tooltip="\n".join(uses[count:]),
-                width=min(available, counter_width),
-                max_lines=1,
-                overflow=ft.TextOverflow.ELLIPSIS,
+    def __init__(self, uses: list[str]):
+        super().__init__(on_size_change=self._resized)
+        self._uses = list(uses)
+        self._widths: dict[str, float] = {}
+        self._available = 0.0
+        self._layout = None
+        self._chips = [_use_chip(use) for use in uses]
+        self._chips[0].expand = True
+        self._row = ft.Row(controls=[self._chips[0]], spacing=CARD_SPACING, opacity=0)
+        measurements = []
+        for index, use in enumerate(uses):
+            chip = _use_chip(use)
+            chip.on_size_change = self._measure(f"use:{index}")
+            measurements.append(chip)
+        ellipsis = _use_chip("…")
+        ellipsis.on_size_change = self._measure("ellipsis")
+        measurements.append(ellipsis)
+        for count in range(1, len(uses) + 1):
+            measurements.append(ft.Text(
+                f"+{count}", theme_style=ft.TextThemeStyle.BODY_MEDIUM,
+                on_size_change=self._measure(f"count:{count}"),
             ))
-        row.controls = visible
-        row.update()
+        self.controls = [
+            self._row,
+            ft.Container(
+                content=ft.Semantics(
+                    content=ft.Row(controls=measurements, scroll=ft.ScrollMode.HIDDEN),
+                    hidden=True, exclude_semantics=True,
+                ),
+                opacity=0, ignore_interactions=True,
+                top=0, left=0, right=0, height=0,
+            ),
+        ]
 
-    row.on_size_change = resize
-    return row
+    def _measure(self, key: str):
+        def measured(event: ft.LayoutSizeChangeEvent) -> None:
+            self._widths[key] = event.width
+            self._fit()
+        return measured
+
+    def _resized(self, event: ft.LayoutSizeChangeEvent) -> None:
+        self._available = max(0, event.width)
+        self._fit()
+
+    def _fit(self) -> None:
+        total = len(self._uses)
+        if self._available <= 0 or len(self._widths) < total * 2 + 1:
+            return
+        natural = [self._widths[f"use:{index}"] for index in range(total)]
+        visible_widths = []
+        for count in range(total, 0, -1):
+            hidden = total - count
+            counter_width = self._widths[f"count:{hidden}"] if hidden else 0
+            gaps = CARD_SPACING * (count if hidden else count - 1)
+            remaining = self._available - sum(natural[:count - 1]) - gaps - counter_width
+            if remaining >= min(natural[count - 1], self._widths["ellipsis"]):
+                visible_widths = natural[:count - 1] + [min(natural[count - 1], remaining)]
+                break
+        hidden = total - len(visible_widths)
+        layout = (tuple(visible_widths), hidden, self._available)
+        if layout == self._layout:
+            return
+        self._layout = layout
+        controls = self._chips[:len(visible_widths)]
+        for chip, width in zip(controls, visible_widths):
+            chip.expand = False
+            chip.width = width
+        if hidden:
+            controls.append(ft.Text(
+                f"+{hidden}", color=TEXT_COLOR, theme_style=ft.TextThemeStyle.BODY_MEDIUM,
+                tooltip="\n".join(self._uses[len(visible_widths):]),
+                width=min(self._available, self._widths[f"count:{hidden}"]),
+                max_lines=1, overflow=ft.TextOverflow.ELLIPSIS,
+            ))
+        self._row.controls = controls
+        self._row.opacity = 1
+        if self.parent is not None:
+            self.update()
+
+
+def floating_action_spacer(button: ft.FloatingActionButton, *, spacing: int) -> ft.Container:
+    """Reserve the button's measured height without adding another full gap."""
+    spacer = ft.Container(height=0)
+
+    def resized(event: ft.LayoutSizeChangeEvent) -> None:
+        spacer.height = max(0, event.height - spacing)
+        if spacer.parent is not None:
+            spacer.update()
+
+    button.on_size_change = resized
+    return spacer
 
 
 def medication_photo(
