@@ -27,10 +27,13 @@ from medclue_mobile.ui.screens.possible_matches import PossibleMatchesScreen
 from medclue_mobile.ui.theme import BACKGROUND_COLOR, CARD_SPACING, create_theme
 
 
+DEFAULT_BACKEND_URL = "https://medclue-api-377942439711.europe-southwest1.run.app"
+
+
 class MedClueApp:
     def __init__(self, page: ft.Page, backend_url: str | None = None, *, database_path: Path | None = None):
         self._page = page
-        self._backend_url = (backend_url if backend_url is not None else os.getenv("MEDCLUE_BACKEND_URL", "")).strip()
+        self._backend_url = (backend_url if backend_url is not None else os.getenv("MEDCLUE_BACKEND_URL", DEFAULT_BACKEND_URL)).strip()
         self._database_path = database_path
         self._cabinet: MedicationCabinet | None = None
         self._api_client: MedClueApiClient | None = None
