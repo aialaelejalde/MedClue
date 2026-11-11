@@ -1,0 +1,16 @@
+# Upload only the application and the files needed to build its container.
+*
+!Dockerfile
+!.dockerignore
+!requirements.txt
+!src/
+!src/**
+
+# These must stay excluded even when they appear inside src/.
+**/.env
+**/.env.*
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/tests/
+**/*.log

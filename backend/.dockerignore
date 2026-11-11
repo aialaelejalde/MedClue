@@ -1,0 +1,16 @@
+# Include only the application and its build configuration in the build context.
+*
+!Dockerfile
+!.dockerignore
+!requirements.txt
+!src/
+!src/**
+
+# Keep secrets, generated files, and tests out of the image.
+**/.env
+**/.env.*
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/tests/
+**/*.log
