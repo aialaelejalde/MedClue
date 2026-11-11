@@ -12,7 +12,7 @@ class IdentifyingMedicationScreen(ft.Container):
         super().__init__(expand=True, padding=SCREEN_MARGIN)
         self._on_cancel = on_cancel
         self._cancelling = False
-        self._cancel_button = ft.TextButton("Cancel", on_click=self._cancel)
+        self._cancel_button = ft.OutlinedButton("Cancel", on_click=self._cancel, expand=True)
         self.content = ft.SafeArea(
             content=ft.Column(
                 controls=[
@@ -27,7 +27,7 @@ class IdentifyingMedicationScreen(ft.Container):
                         theme_style=ft.TextThemeStyle.BODY_LARGE,
                         text_align=ft.TextAlign.CENTER,
                     ),
-                    self._cancel_button,
+                    ft.Row(controls=[self._cancel_button]),
                 ],
                 alignment=ft.MainAxisAlignment.CENTER,
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,

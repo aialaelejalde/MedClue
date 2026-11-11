@@ -11,9 +11,9 @@ from medclue_mobile.ui.dialogs import show_error, show_photo_too_large
 from medclue_mobile.ui.theme import (
     ACCENT_COLOR,
     CARD_COLOR,
-    CARD_RADIUS,
     CARD_SPACING,
     CONTENT_PADDING,
+    ICON_SIZE,
     SCREEN_MARGIN,
     SECTION_SPACING,
 )
@@ -32,6 +32,13 @@ class IdentifyScreen(ft.Container):
         self._ready = False
         self._busy = False
         self._camera_task = None
+        self._preview_width = 0
+        self._preview_height = 0
+        self._preview_ratio = 3 / 4
+        photos.camera.expand = False
+        photos.camera.left = 0
+        photos.camera.top = 0
+        photos.camera.on_state_change = self._camera_changed
         self._status_title = ft.Text(
             "Starting camera...", theme_style=ft.TextThemeStyle.TITLE_LARGE,
             text_align=ft.TextAlign.CENTER,
@@ -52,11 +59,29 @@ class IdentifyScreen(ft.Container):
             padding=CONTENT_PADDING,
             alignment=ft.Alignment.CENTER,
         )
+        guide_side = ft.BorderSide(2, ACCENT_COLOR)
         self._guide = ft.Container(
+            content=ft.Stack(controls=[
+                ft.Container(
+                    width=ICON_SIZE, height=ICON_SIZE, top=0, left=0,
+                    border=ft.Border(top=guide_side, left=guide_side),
+                ),
+                ft.Container(
+                    width=ICON_SIZE, height=ICON_SIZE, top=0, right=0,
+                    border=ft.Border(top=guide_side, right=guide_side),
+                ),
+                ft.Container(
+                    width=ICON_SIZE, height=ICON_SIZE, bottom=0, left=0,
+                    border=ft.Border(bottom=guide_side, left=guide_side),
+                ),
+                ft.Container(
+                    width=ICON_SIZE, height=ICON_SIZE, bottom=0, right=0,
+                    border=ft.Border(bottom=guide_side, right=guide_side),
+                ),
+            ]),
             margin=SECTION_SPACING,
-            border=ft.Border.all(2, ACCENT_COLOR),
-            border_radius=CARD_RADIUS,
             visible=False,
+            ignore_interactions=True,
         )
         camera_card = soft_card(
             ft.Stack(
@@ -65,7 +90,9 @@ class IdentifyScreen(ft.Container):
             ),
             padding=0,
         )
-        camera_card.expand = True
+        camera_card.height = 180
+        camera_card.aspect_ratio = 4 / 3
+        camera_card.on_size_change = self._resize_preview
         self._identify_button = ft.FilledButton(
             "Identify medication", on_click=self._identify, disabled=True, expand=True
         )
@@ -73,11 +100,18 @@ class IdentifyScreen(ft.Container):
             content=ft.Column(
                 controls=[
                     ft.Text("Identify medication", theme_style=ft.TextThemeStyle.HEADLINE_LARGE),
-                    camera_card,
-                    ft.Row(controls=[self._identify_button]),
+                    ft.Column(
+                        controls=[camera_card, ft.Row(controls=[self._identify_button])],
+                        spacing=CARD_SPACING,
+                        alignment=ft.MainAxisAlignment.CENTER,
+                        horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+                        scroll=ft.ScrollMode.AUTO,
+                        expand=True,
+                    ),
                 ],
                 spacing=SECTION_SPACING,
                 expand=True,
+                horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
             )
         )
 
@@ -91,6 +125,29 @@ class IdentifyScreen(ft.Container):
         if self._camera_task is not None:
             self._camera_task.cancel()
         self._photos.discard_photo()
+
+    def _resize_preview(self, event: ft.LayoutSizeChangeEvent) -> None:
+        self._preview_width, self._preview_height = event.width, event.height
+        self._fit_preview()
+
+    def _camera_changed(self, event: ft.Event) -> None:
+        ratio = event.aspect_ratio
+        if ratio is None or ratio <= 0:
+            return
+        orientation = event.preview_pause_orientation or event.locked_capture_orientation or event.device_orientation
+        landscape = orientation in (ft.DeviceOrientation.LANDSCAPE_LEFT, ft.DeviceOrientation.LANDSCAPE_RIGHT)
+        self._preview_ratio = max(ratio, 1 / ratio) if landscape else min(ratio, 1 / ratio)
+        self._fit_preview()
+
+    def _fit_preview(self) -> None:
+        if not self._active or self._preview_width <= 0 or self._preview_height <= 0:
+            return
+        camera = self._photos.camera
+        camera.width = max(self._preview_width, self._preview_height * self._preview_ratio)
+        camera.height = camera.width / self._preview_ratio
+        camera.left = (self._preview_width - camera.width) / 2
+        camera.top = (self._preview_height - camera.height) / 2
+        camera.update()
 
     async def _initialize_camera(self) -> None:
         if not self._active or self._busy:
