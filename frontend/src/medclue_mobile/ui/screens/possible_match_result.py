@@ -93,7 +93,7 @@ class PossibleMatchResultScreen(ft.Container):
         if status != "not_identified":
             warning_icon = ft.Icons.ERROR_OUTLINE if status == "no_match" else ft.Icons.WARNING_AMBER_ROUNDED
             controls = [ft.Column(
-                controls=[ft.Icon(warning_icon, color=PRIMARY_COLOR, size=ICON_SIZE), *controls],
+                controls=[ft.Icon(warning_icon, color=PRIMARY_COLOR, size=ICON_SIZE * 1.25), *controls],
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                 spacing=CARD_SPACING,
                 tight=True,
@@ -127,10 +127,8 @@ class PossibleMatchResultScreen(ft.Container):
                     ft.Column(
                         controls=controls,
                         spacing=SECTION_SPACING,
-                        alignment=ft.MainAxisAlignment.CENTER,
                         horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
-                        scroll=ft.ScrollMode.AUTO,
-                        expand=True,
+                        tight=True,
                     ),
                     ft.Column(
                         controls=[
@@ -143,7 +141,8 @@ class PossibleMatchResultScreen(ft.Container):
                         tight=True,
                     ),
                 ],
-                spacing=CARD_SPACING,
+                spacing=SECTION_SPACING,
+                scroll=ft.ScrollMode.AUTO,
                 expand=True,
                 horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
             )

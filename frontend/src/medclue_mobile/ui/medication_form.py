@@ -17,7 +17,7 @@ from medclue_mobile.medications import (
     validate_medication,
 )
 from medclue_mobile.ui.components import medication_photo, soft_section
-from medclue_mobile.ui.theme import CARD_SPACING, CONTENT_PADDING, INPUT_RADIUS, MIN_TOUCH_TARGET_SIZE, SECTION_SPACING
+from medclue_mobile.ui.theme import ACCENT_COLOR, CARD_SPACING, CONTENT_PADDING, INPUT_RADIUS, MIN_TOUCH_TARGET_SIZE, SECTION_SPACING
 
 
 FREQUENCY_LABELS = {
@@ -91,12 +91,32 @@ class MedicationForm(ft.Column):
             expand=True,
         )
 
-        official_uses = list(dict.fromkeys(official_uses or []))
+        self._official_uses = list(dict.fromkeys(official_uses or []))
         custom_reasons = [
             reason for reason in dict.fromkeys(self._original.uses)
-            if reason not in official_uses and reason != UNKNOWN_REASON
+            if reason not in self._official_uses and reason != UNKNOWN_REASON
         ]
-        self._use_options = [ft.Checkbox(label=use, value=use in self._original.uses) for use in official_uses]
+        self._use_options = [
+            ft.Checkbox(label=use, value=use in self._original.uses, on_change=self._options_changed)
+            for use in self._official_uses
+        ]
+        self._use_summary = ft.Text(theme_style=ft.TextThemeStyle.BODY_SMALL)
+        selector_shape = ft.RoundedRectangleBorder(radius=INPUT_RADIUS, side=ft.BorderSide(1, ACCENT_COLOR))
+        self._use_selector = ft.ExpansionTile(
+            title=ft.Text("Select the uses that apply to you", theme_style=ft.TextThemeStyle.BODY_LARGE),
+            subtitle=self._use_summary,
+            controls=[ft.ListView(
+                controls=[self._checkbox_row(option) for option in self._use_options],
+                height=240,
+                spacing=CARD_SPACING,
+            )],
+            controls_padding=ft.Padding.only(left=CONTENT_PADDING, right=CONTENT_PADDING, bottom=CARD_SPACING),
+            expanded_cross_axis_alignment=ft.CrossAxisAlignment.STRETCH,
+            shape=selector_shape,
+            collapsed_shape=selector_shape,
+            maintain_state=True,
+            visible=bool(self._use_options),
+        )
         self._own_reason = ft.Checkbox(
             label="Other — Add my own reason", value=bool(custom_reasons),
             visible=bool(self._use_options), on_change=self._options_changed,
@@ -186,7 +206,8 @@ class MedicationForm(ft.Column):
                 ]),
                 self.name_field,
                 _field_group([
-                    *self._use_options, self._own_reason, self._reason_group, self._checkbox_row(self._unknown_reason),
+                    self._use_selector, self._checkbox_row(self._own_reason),
+                    self._reason_group, self._checkbox_row(self._unknown_reason),
                 ], title="Prescribed for"),
             ]),
             _form_section("My instructions", [
@@ -244,6 +265,7 @@ class MedicationForm(ft.Column):
             self._options_changed(event)
 
         return ft.Container(
+            visible=checkbox.visible,
             content=ft.Row(
                 controls=[
                     ft.Container(content=checkbox, height=MIN_TOUCH_TARGET_SIZE, alignment=ft.Alignment.CENTER, width=40),
@@ -255,7 +277,7 @@ class MedicationForm(ft.Column):
 
     def get_medication(self) -> Medication:
         """Return a validated draft without saving or changing the original record."""
-        uses = [option.label for option in self._use_options if option.value]
+        uses = [use for use, option in zip(self._official_uses, self._use_options) if option.value]
         if not self._use_options or self._own_reason.value:
             uses.extend(field.value for field in self._reason_fields if field.value.strip())
         if self._unknown_reason.value:
@@ -332,6 +354,7 @@ class MedicationForm(ft.Column):
         self._refresh()
 
     def _update_visibility(self) -> None:
+        self._use_summary.value = f"{sum(bool(option.value) for option in self._use_options)} selected"
         self._reason_group.visible = not self._use_options or bool(self._own_reason.value)
         self._quantity_group.visible = not self.amount_custom.value
         self.amount_text.visible = bool(self.amount_custom.value)

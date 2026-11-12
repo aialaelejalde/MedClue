@@ -46,7 +46,7 @@ class IdentificationResultScreen(ft.Container):
             medication_name(name, theme_style=ft.TextThemeStyle.HEADLINE_LARGE),
         ]
         if self._official_uses:
-            controls.append(soft_section("What is it used for?", [use_chips(self._official_uses)]))
+            controls.append(soft_section("What is it used for?", [use_chips(self._official_uses, full_text=True)]))
 
         self.content = ft.SafeArea(
             content=ft.Column(

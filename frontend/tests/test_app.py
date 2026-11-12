@@ -354,10 +354,19 @@ def test_identification_result_opens_correct_screen_and_back_returns_to_camera(a
         await app._screen._on_identify(b"captured photo", "image/jpeg")
         assert_screen(app, screen_type, 1)
         if isinstance(app._screen, PossibleMatchResultScreen):
-            content = app._screen.content.content.controls[1].controls
+            layout = app._screen.content.content
+            assert layout.scroll == ft.ScrollMode.AUTO
+            assert layout.spacing == 24
+            assert layout.controls[0].aspect_ratio == 4 / 3
+            assert not layout.controls[1].scroll and not layout.controls[1].expand
+            assert layout.controls[-1].controls == [
+                app._screen._retry_button, app._screen._retake_button, app._screen._add_button,
+            ]
+            content = layout.controls[1].controls
             if result["status"] != "not_identified":
                 expected_icon = ft.Icons.ERROR_OUTLINE if result["status"] == "no_match" else ft.Icons.WARNING_AMBER_ROUNDED
                 assert content[0].controls[0].icon == expected_icon
+                assert content[0].controls[0].size == 30
                 assert content[0].horizontal_alignment == ft.CrossAxisAlignment.CENTER
             if result.get("suggested_candidate"):
                 candidate = result["suggested_candidate"]
@@ -393,13 +402,50 @@ def test_leaving_completed_result_needs_no_confirmation(app_context, tab, screen
 def test_verified_save_button_opens_add_instead_of_saving_automatically(app_context):
     async def run():
         app = app_context.app
+        official_uses = ["A long official indication with restrictions and conditions. " * 8, "Another use", "Unselected use"]
+        app_context.session.identify.return_value = {**VERIFIED_RESULT, "official_uses": official_uses}
         await app.start()
         await select_tab(app, 1)
         await app._screen._on_identify(b"captured photo", "image/jpeg")
+        chips = app._screen.content.content.controls[0].controls[-1].content.controls[1]
+        assert chips.wrap and len(chips.controls) == len(official_uses)
+        assert [chip.content.value for chip in chips.controls] == official_uses
+        assert all(chip.content.max_lines is None and chip.content.overflow is None for chip in chips.controls)
         await app._screen._save_button.on_click(None)
         assert_screen(app, AddMedicationScreen, 2)
-        assert app._screen.form.name_field.value == "Confirmed medication"
-        assert not any(option.value for option in app._screen.form._use_options)
+        form = app._screen.form
+        assert form.name_field.value == "Confirmed medication"
+        assert not any(option.value for option in form._use_options)
+        assert form.get_medication().uses == []
+        assert not form.has_changes()
+        selector = form._use_selector
+        assert isinstance(selector, ft.ExpansionTile) and selector.maintain_state
+        assert selector.title.value == "Select the uses that apply to you"
+        assert selector.controls[0].height == 240
+        rows = selector.controls[0].controls
+        assert [row.content.controls[1].value for row in rows] == official_uses
+        assert all(row.content.controls[1].expand and row.content.controls[1].max_lines is None for row in rows)
+        rows[0].on_click(None)
+        rows[1].on_click(None)
+        assert form.get_medication().uses == official_uses[:2]
+        assert form._use_summary.value == "2 selected"
+        rows[0].on_click(None)
+        assert form.get_medication().uses == [official_uses[1]]
+        assert form._use_summary.value == "1 selected"
+        rows[0].on_click(None)
+        selector.expanded = True
+        selector.expanded = False
+        assert form.get_medication().uses == official_uses[:2]
+        form._own_reason.value = True
+        form._own_reason.on_change(SimpleNamespace(control=form._own_reason))
+        assert form._reason_group.visible
+        form._reason_fields[0].value = "My own reason"
+        draft = form.get_medication()
+        assert draft.uses == [*official_uses[:2], "My own reason"]
+        app_context.cabinet.get_medication.return_value = replace(draft, id=1)
+        await app._open_edit(1)
+        assert_screen(app, EditMedicationScreen, 0)
+        assert app._screen.form.get_medication().uses == draft.uses
         app_context.cabinet.save_medication.assert_not_called()
     asyncio.run(run())
 
