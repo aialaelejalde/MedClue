@@ -132,6 +132,10 @@ def _medication_candidate(medication: dict) -> MedicationCandidate:
 def _medication_presentations(medication: dict) -> list[CimaPresentation]:
     candidate = _medication_candidate(medication)
     registration_number = _required_text(medication.get("nregistro"), "Registration number")
+    ingredients = medication.get("principiosActivos", [])
+    if not isinstance(ingredients, list) or not all(isinstance(item, dict) for item in ingredients):
+        raise ValueError("CIMA returned invalid active ingredients.")
+    active_ingredients = [_required_text(item.get("nombre"), "Active ingredient") for item in ingredients]
 
     packages = medication.get("presentaciones")
     if not isinstance(packages, list) or not all(isinstance(item, dict) for item in packages):
@@ -143,6 +147,7 @@ def _medication_presentations(medication: dict) -> list[CimaPresentation]:
             form=candidate.form,
             registration_number=registration_number,
             national_code=package.get("cn"),
+            active_ingredients=active_ingredients,
         )
         for package in packages
     ]

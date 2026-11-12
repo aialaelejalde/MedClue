@@ -309,6 +309,7 @@ def test_search_name_filter_preserves_possible_matches(query, name, strength, fo
         {"form": "capsule"},
         {"strength": None},
         {"form": None},
+        {"active_ingredients": ["Different ingredient"]},
     ],
 )
 def test_grouping_keeps_different_medications_separate(presentation, changes):
@@ -407,6 +408,7 @@ def test_unclear_strength_prevents_verification_even_with_one_result(strength):
         ("Example", "20 mg/ml", "SOLUCION PARA PULVERIZACION NASAL",
          "EXAMPLE 100 mg/5 ml SOLUCION PARA PULVERIZACION NASAL"),
         ("Example 2", "500 mg", "tablet", "EXAMPLE 2 500 mg TABLETS"),
+        ("Example", "500 mg", "film-coated tablet", "EXAMPLE 500 mg COMPRIMIDOS EFG"),
     ],
 )
 def test_full_name_strength_and_form_agree_with_structured_fields(name, strength, form, official_name):
@@ -500,6 +502,8 @@ def test_full_name_corroborates_a_generic_coating_without_equating_forms(structu
         ("EXAMPLE 500 mg COMPRIMIDOS DE LIBERACION PROLONGADA", "500 mg", "tablet"),
         ("EXAMPLE 500 mg COMPRIMIDOS GASTRORRESISTENTES", "500 mg", "tablet"),
         ("EXAMPLE 500 mg TABLETS", "500 mg", "unlisted form"),
+        ("EXAMPLE 500 mg TABLETS", "500 mg", "film-coated tablet"),
+        ("EXAMPLE 500 mg TABLETS", "500 mg", "prolonged-release tablet"),
         ("EXAMPLE 500 mg TABLETS", None, "tablet"),
         ("EXAMPLE 500 mg TABLETS", "500 mg", None),
         ("EXAMPLE 500 mg TABLETS FOR ORAL USE", "500 mg", "tablet"),
@@ -563,3 +567,40 @@ def test_name_based_verification_does_not_hide_an_alternative(inconsistent):
 
     assert result.presentations == [first, second]
     assert result.verified is None
+
+
+@pytest.mark.parametrize(
+    "first, second, ingredients, expected",
+    [
+        ("550 mg", "0,55 g naproxeno sodico", ["Naproxeno sódico"], True),
+        ("500 mg", "550 mg naproxeno sodico", ["Naproxeno sódico"], False),
+        ("550 mg", "550 mg naproxeno sodico", [], None),
+        ("550 mg", "550 mg naproxeno sodico", ["Naproxeno"], None),
+        ("550 mg naproxeno", "550 mg naproxeno sodico", ["Naproxeno sódico"], None),
+        ("550 mg", "550 mg naproxeno potasico", ["Naproxeno sódico"], None),
+        ("550 mg", "550 mg ibuprofeno", ["Naproxeno sódico"], None),
+        ("100 mg + 20 mg", "100 mg first + 20 mg second", ["first", "second"], None),
+        ("550 mg", "550 mg/ml naproxeno sodico", ["Naproxeno sódico"], False),
+    ],
+)
+def test_described_strength_requires_complete_ingredient_evidence(first, second, ingredients, expected):
+    assert compare_strengths(first, second, active_ingredients=ingredients) is expected
+    assert compare_strengths(second, first, active_ingredients=ingredients) is expected
+
+
+@pytest.mark.parametrize("ingredients, verified", [([], False), (["Naproxeno"], False), (["Naproxeno sódico"], True)])
+def test_annotated_strength_and_generic_title_need_all_verification_evidence(ingredients, verified):
+    candidate = MedicationCandidate(
+        name="Naproxeno sódico cinfa", strength="550 mg", form="comprimidos recubiertos con película",
+    )
+    presentation = CimaPresentation(
+        name="NAPROXENO SODICO CINFA 550 mg COMPRIMIDOS EFG", strength="550 mg naproxeno sodico",
+        form="COMPRIMIDO RECUBIERTO CON PELÍCULA", registration_number="65730", national_code="000001",
+        active_ingredients=ingredients,
+    )
+
+    result = find_presentation_matches(candidate, [presentation])
+
+    assert result.presentations == [presentation]
+    assert (result.verified == presentation) is verified
+    assert "active_ingredients" not in presentation.model_dump()

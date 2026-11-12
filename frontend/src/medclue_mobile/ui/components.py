@@ -1,5 +1,7 @@
 """Build small interface parts that several screens share."""
 
+import re
+
 import flet as ft
 
 from medclue_mobile.ui.theme import (
@@ -64,10 +66,10 @@ def medication_name(
     )
 
 
-def _use_chip(use: str, *, full_text: bool = False) -> ft.Container:
+def _use_chip(use: str, *, full_text: bool = False, display_text: str | None = None) -> ft.Container:
     return ft.Container(
         content=ft.Text(
-            use, color=TEXT_COLOR,
+            use if display_text is None else display_text, color=TEXT_COLOR,
             max_lines=None if full_text else 1,
             overflow=None if full_text else ft.TextOverflow.ELLIPSIS,
             theme_style=ft.TextThemeStyle.BODY_MEDIUM,
@@ -98,19 +100,21 @@ class _CompactUseChips(ft.Stack):
     def __init__(self, uses: list[str]):
         super().__init__(on_size_change=self._resized)
         self._uses = list(uses)
+        labels = [_home_use_label(use) for use in uses]
+        self._indices = [index for index, label in enumerate(labels) if label]
         self._widths: dict[str, float] = {}
         self._available = 0.0
         self._layout = None
-        self._chips = [_use_chip(use) for use in uses]
-        self._chips[0].expand = True
-        self._row = ft.Row(controls=[self._chips[0]], spacing=CARD_SPACING, opacity=0)
+        self._chips = [_use_chip(uses[index], display_text=labels[index]) for index in self._indices]
+        self._row = ft.Row(spacing=CARD_SPACING, opacity=0)
         measurements = []
-        for index, use in enumerate(uses):
-            chip = _use_chip(use)
+        for index, original_index in enumerate(self._indices):
+            label = labels[original_index]
+            chip = _use_chip(label)
             chip.on_size_change = self._measure(f"use:{index}")
             measurements.append(chip)
             # Require a readable prefix as well as the ellipsis when truncating.
-            minimum = _use_chip(use[:3] + "…")
+            minimum = _use_chip(label[:3] + "…")
             minimum.on_size_change = self._measure(f"minimum:{index}")
             measurements.append(minimum)
         for count in range(1, len(uses) + 1):
@@ -142,11 +146,12 @@ class _CompactUseChips(ft.Stack):
 
     def _fit(self) -> None:
         total = len(self._uses)
-        if self._available <= 0 or len(self._widths) < total * 3:
+        countable = len(self._chips)
+        if self._available <= 0 or len(self._widths) < countable * 2 + total:
             return
-        natural = [self._widths[f"use:{index}"] for index in range(total)]
+        natural = [self._widths[f"use:{index}"] for index in range(countable)]
         visible_widths = []
-        for count in range(total, 0, -1):
+        for count in range(countable, 0, -1):
             hidden = total - count
             counter_width = self._widths[f"count:{hidden}"] if hidden else 0
             gaps = CARD_SPACING * (count if hidden else count - 1)
@@ -167,7 +172,9 @@ class _CompactUseChips(ft.Stack):
         if hidden:
             controls.append(ft.Text(
                 f"+{hidden}", color=TEXT_COLOR, theme_style=ft.TextThemeStyle.BODY_MEDIUM,
-                tooltip="\n".join(self._uses[len(visible_widths):]),
+                tooltip="\n".join(
+                    use for index, use in enumerate(self._uses) if index not in self._indices[:len(visible_widths)]
+                ),
                 width=min(self._available, self._widths[f"count:{hidden}"]),
                 max_lines=1, overflow=ft.TextOverflow.ELLIPSIS,
             ))
@@ -175,6 +182,16 @@ class _CompactUseChips(ft.Stack):
         self._row.opacity = 1
         if self.parent is not None:
             self.update()
+
+
+def _home_use_label(use: str) -> str:
+    """Shorten Home labels without changing the full text used by other screens."""
+    label = use
+    while True:
+        simplified = re.sub(r"\([^()]*\)", " ", label)
+        if simplified == label:
+            return " ".join(label.split())
+        label = simplified
 
 
 def floating_action_spacer(button: ft.FloatingActionButton, *, spacing: int) -> ft.Container:

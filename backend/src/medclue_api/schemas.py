@@ -47,6 +47,7 @@ class OfficialUsesResult(_Schema):
 class CimaPresentation(MedicationCandidate):
     registration_number: str
     national_code: str
+    active_ingredients: list[str] = Field(default_factory=list, exclude=True, repr=False)
 
 
 class VerifyRequest(_Schema):

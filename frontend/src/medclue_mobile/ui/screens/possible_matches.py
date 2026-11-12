@@ -76,7 +76,12 @@ class PossibleMatchesScreen(ft.Container):
                         theme_style=ft.TextThemeStyle.BODY_LARGE,
                     ),
                     self._match_list,
-                    ft.Row(controls=[self._retake_button, self._add_button], wrap=True),
+                    ft.Column(
+                        controls=[self._retake_button, self._add_button],
+                        spacing=6,
+                        horizontal_alignment=ft.CrossAxisAlignment.START,
+                        tight=True,
+                    ),
                 ],
                 spacing=CARD_SPACING,
                 expand=True,

@@ -261,22 +261,33 @@ def test_general_form_suffix_variation_survives_search_grouping_and_matching(cim
     assert result.verified == presentations[0]
 
 
-def test_official_name_resolves_coating_variation_without_extra_requests(cima_client):
+@pytest.mark.parametrize("name, strength, form, official_name, official_strength, official_form, registration, ingredients", [
+    ("Doxiciclina Normon", "100 mg", "comprimidos recubiertos",
+     "DOXICICLINA NORMON 100 MG COMPRIMIDOS RECUBIERTOS", "100 mg", "GRAGEAS", "47077", []),
+    ("Naproxeno sódico cinfa", "550 mg", "comprimidos recubiertos con película",
+     "NAPROXENO SODICO CINFA 550 mg COMPRIMIDOS EFG", "550 mg naproxeno sodico",
+     "COMPRIMIDO RECUBIERTO CON PELÍCULA", "65730", [{"nombre": "NAPROXENO SÓDICO"}]),
+])
+def test_official_name_resolves_coating_variation_without_extra_requests(
+    cima_client, name, strength, form, official_name, official_strength, official_form, registration, ingredients,
+):
     client, requests, responses = cima_client
     selected = medication(
-        registration="47077", name="DOXICICLINA NORMON 100 MG COMPRIMIDOS RECUBIERTOS",
-        strength="100 mg", form="GRAGEAS", codes=("693766", "693767"),
+        registration=registration, name=official_name,
+        strength=official_strength, form=official_form, codes=("000010", "000020"),
     )
+    selected["principiosActivos"] = ingredients
     responses.extend([httpx.Response(200, json=search_page([selected])), httpx.Response(200, json=selected)])
-    candidate = MedicationCandidate(name="Doxiciclina Normon", strength="100 mg", form="comprimidos recubiertos")
+    candidate = MedicationCandidate(name=name, strength=strength, form=form)
 
     presentations = asyncio.run(client.search_presentations(candidate.name))
     result = find_presentation_matches(candidate, presentations)
 
     assert len(presentations) == 1
     assert result.verified == presentations[0]
-    assert result.verified.registration_number == "47077"
+    assert result.verified.registration_number == registration
     assert result.verified.name == selected["nombre"]
-    assert result.verified.form == "GRAGEAS"
+    assert result.verified.strength == official_strength
+    assert result.verified.form == official_form
     assert [request.url.path for request in requests] == ["/cima/rest/medicamentos", "/cima/rest/medicamento"]
     assert responses == []

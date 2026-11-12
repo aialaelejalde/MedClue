@@ -101,8 +101,22 @@ def assert_screen(app, screen_type, tab):
 
 def test_app_starts_on_home(app_context):
     async def run():
+        uses = ["Moderate pain (including migraine; age 14+)", "Fever (short term (adults only))", "(Restriction only)"]
+        saved = replace(app_context.saved, uses=uses)
+        app_context.cabinet.list_medications.return_value = [saved]
         await app_context.app.start()
         assert_screen(app_context.app, HomeScreen, 0)
+        card = app_context.app._screen._medication_list.controls[0]
+        chips = card.content.controls[1].content.controls[-1]
+        assert [chip.content.value for chip in chips._chips] == ["Moderate pain", "Fever"]
+        assert [chip.tooltip for chip in chips._chips] == uses[:2]
+        assert chips._uses == saved.uses == uses
+        chips._widths = {"use:0": 120, "use:1": 70, "minimum:0": 65, "minimum:1": 60,
+                         "count:1": 20, "count:2": 20, "count:3": 20}
+        chips._available = 150
+        chips._fit()
+        assert chips._row.controls[-1].value == "+2"
+        assert chips._row.controls[-1].tooltip == "\n".join(uses[1:])
         assert [item.label for item in app_context.app._navigation.destinations] == ["Home", "Identify", "Add"]
         app_context.session.identify.assert_not_awaited()
     asyncio.run(run())
@@ -402,7 +416,7 @@ def test_leaving_completed_result_needs_no_confirmation(app_context, tab, screen
 def test_verified_save_button_opens_add_instead_of_saving_automatically(app_context):
     async def run():
         app = app_context.app
-        official_uses = ["A long official indication with restrictions and conditions. " * 8, "Another use", "Unselected use"]
+        official_uses = ["A long official indication (with restrictions and conditions). " * 8, "Another use", "Unselected use"]
         app_context.session.identify.return_value = {**VERIFIED_RESULT, "official_uses": official_uses}
         await app.start()
         await select_tab(app, 1)
@@ -421,8 +435,15 @@ def test_verified_save_button_opens_add_instead_of_saving_automatically(app_cont
         selector = form._use_selector
         assert isinstance(selector, ft.ExpansionTile) and selector.maintain_state
         assert selector.title.value == "Select the uses that apply to you"
-        assert selector.controls[0].height == 240
-        rows = selector.controls[0].controls
+        assert selector.subtitle.padding.top == 6
+        use_list = selector.controls[0]
+        assert use_list.height is None
+        options = use_list.controls[0]
+        options.on_size_change(SimpleNamespace(width=280, height=96))
+        assert use_list.height == 96
+        options.on_size_change(SimpleNamespace(width=280, height=480))
+        assert use_list.height == 240
+        rows = options.controls
         assert [row.content.controls[1].value for row in rows] == official_uses
         assert all(row.content.controls[1].expand and row.content.controls[1].max_lines is None for row in rows)
         rows[0].on_click(None)
@@ -535,6 +556,10 @@ def test_selecting_candidate_checks_its_index_and_opens_the_result(app_context):
         await select_tab(app, 1)
         await app._screen._on_identify(b"captured photo", "image/jpeg")
         assert_screen(app, PossibleMatchesScreen, 1)
+        actions = app._screen.content.content.controls[-1]
+        assert isinstance(actions, ft.Column)
+        assert actions.controls == [app._screen._retake_button, app._screen._add_button]
+        assert actions.horizontal_alignment == ft.CrossAxisAlignment.START
         await app._screen._match_list.controls[1].on_click(None)
         app_context.session.select_match.assert_awaited_once_with(1)
         assert_screen(app, IdentificationResultScreen, 1)

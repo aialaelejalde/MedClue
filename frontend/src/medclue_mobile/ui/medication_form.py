@@ -102,14 +102,17 @@ class MedicationForm(ft.Column):
         ]
         self._use_summary = ft.Text(theme_style=ft.TextThemeStyle.BODY_SMALL)
         selector_shape = ft.RoundedRectangleBorder(radius=INPUT_RADIUS, side=ft.BorderSide(1, ACCENT_COLOR))
+        self._use_list = ft.ListView(controls=[ft.Column(
+            controls=[self._checkbox_row(option) for option in self._use_options],
+            spacing=CARD_SPACING,
+            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+            tight=True,
+            on_size_change=self._resize_use_list,
+        )])
         self._use_selector = ft.ExpansionTile(
             title=ft.Text("Select the uses that apply to you", theme_style=ft.TextThemeStyle.BODY_LARGE),
-            subtitle=self._use_summary,
-            controls=[ft.ListView(
-                controls=[self._checkbox_row(option) for option in self._use_options],
-                height=240,
-                spacing=CARD_SPACING,
-            )],
+            subtitle=ft.Container(content=self._use_summary, padding=ft.Padding.only(top=6)),
+            controls=[self._use_list],
             controls_padding=ft.Padding.only(left=CONTENT_PADDING, right=CONTENT_PADDING, bottom=CARD_SPACING),
             expanded_cross_axis_alignment=ft.CrossAxisAlignment.STRETCH,
             shape=selector_shape,
@@ -252,6 +255,13 @@ class MedicationForm(ft.Column):
         self._reason_group.controls.insert(-1, field)
         self._fields.append(field)
         self._refresh()
+
+    def _resize_use_list(self, event: ft.LayoutSizeChangeEvent) -> None:
+        height = min(event.height, 240)
+        if self._use_list.height != height:
+            self._use_list.height = height
+            if self.parent is not None:
+                self._use_list.update()
 
     def _checkbox_row(self, checkbox: ft.Checkbox) -> ft.Container:
         """Align long checkbox labels and let them wrap within the form."""

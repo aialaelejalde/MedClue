@@ -60,6 +60,12 @@ FORM_FAMILIES = {
     "gastro_resistant_tablet": "tablet",
     "hard_capsule": "capsule",
 }
+FORM_DESCRIPTIONS = {
+    "coated_tablet": "tablet",
+    "sugar_coated_tablet": "coated_tablet",
+    "film_coated_tablet": "coated_tablet",
+    "hard_capsule": "capsule",
+}
 
 
 @dataclass
@@ -117,17 +123,18 @@ def group_presentations(presentations: list[CimaPresentation]) -> list[CimaPrese
             normalize_name(presentation.name),
             normalize_name(presentation.strength) if presentation.strength else None,
             normalize_name(presentation.form) if presentation.form else None,
+            tuple(normalize_name(ingredient) for ingredient in presentation.active_ingredients),
         )
         grouped.setdefault(key, presentation)
     return list(grouped.values())
 
 
-def compare_strengths(first: str | None, second: str | None) -> bool | None:
+def compare_strengths(first: str | None, second: str | None, *, active_ingredients: list[str] | None = None) -> bool | None:
     """Return True for equivalent strengths, False for different strengths, or None if uncertain."""
     if not first or not second:
         return None
-    first_values = _parse_strength(first)
-    second_values = _parse_strength(second)
+    first_values = _parse_described_strength(first, active_ingredients)
+    second_values = _parse_described_strength(second, active_ingredients)
     if first_values is None or second_values is None:
         return None
     return first_values == second_values
@@ -185,21 +192,25 @@ def find_presentation_matches(candidate: MedicationCandidate, presentations: lis
 
 
 def _supports_named_form(structured: str | None, named: str | None) -> bool:
-    """Accept a matching form or a specific coating corroborating a generic coating."""
+    """Allow a generic name only when a structured form supplies the missing detail."""
     if compare_forms(structured, named) is True:
         return True
     if not structured or not named:
         return False
-    return _form_key(named) == "coated_tablet" and _form_key(structured) in (
-        "film_coated_tablet", "sugar_coated_tablet",
-    )
+    structured_form, named_form = _form_key(structured), _form_key(named)
+    while structured_form in FORM_DESCRIPTIONS:
+        structured_form = FORM_DESCRIPTIONS[structured_form]
+        if structured_form == named_form:
+            return True
+    return False
 
 
 def _name_conflicts_with_fields(medication: MedicationCandidate, parts: _NameParts | None) -> bool:
     """Keep inconsistent records as uncertain instead of using them to prove uniqueness."""
     if parts is None:
         return False
-    if compare_strengths(parts.strength, medication.strength) is False:
+    ingredients = medication.active_ingredients if isinstance(medication, CimaPresentation) else None
+    if compare_strengths(parts.strength, medication.strength, active_ingredients=ingredients) is False:
         return True
     if not medication.form:
         return False
@@ -216,7 +227,9 @@ def _compare_presentation(candidate: MedicationCandidate, presentation: CimaPres
     if _name_conflicts_with_fields(candidate, candidate_parts) or _name_conflicts_with_fields(presentation, official_parts):
         return None
 
-    strength_match = compare_strengths(candidate.strength, presentation.strength)
+    strength_match = compare_strengths(
+        candidate.strength, presentation.strength, active_ingredients=presentation.active_ingredients,
+    )
     form_match = compare_forms(candidate.form, presentation.form)
     if strength_match is False or form_match is False:
         return False
@@ -225,14 +238,19 @@ def _compare_presentation(candidate: MedicationCandidate, presentation: CimaPres
 
     if candidate_parts is not None and (
         compare_strengths(candidate_parts.strength, candidate.strength) is not True
-        or compare_forms(candidate_parts.form, candidate.form) is not True
+        or not _supports_named_form(candidate.form, candidate_parts.form)
     ):
         return None
 
     if official_parts is not None:
+        if form_match is not True and _form_key(official_parts.form) in FORM_FAMILIES.values():
+            return None
         if (
             compare_strengths(candidate.strength, official_parts.strength) is not True
-            or compare_forms(candidate.form, official_parts.form) is not True
+            or not (
+                compare_forms(candidate.form, official_parts.form) is True
+                or (form_match is True and _supports_named_form(candidate.form, official_parts.form))
+            )
             or not _supports_named_form(presentation.form, official_parts.form)
         ):
             return None
@@ -259,7 +277,8 @@ def _name_key(medication: MedicationCandidate) -> str:
     name = normalize_name(medication.name)
 
     parts = _split_medication_name(name)
-    if parts is not None and compare_strengths(parts.strength, medication.strength) is True:
+    ingredients = medication.active_ingredients if isinstance(medication, CimaPresentation) else None
+    if parts is not None and compare_strengths(parts.strength, medication.strength, active_ingredients=ingredients) is True:
         return parts.name
 
     if medication.form:
@@ -289,6 +308,20 @@ def _split_medication_name(name: str) -> _NameParts | None:
         if parts:
             return parts[0] if len(parts) == 1 else None
     return None
+
+
+def _parse_described_strength(strength: str, active_ingredients: list[str] | None) -> list[tuple[str, Fraction]] | None:
+    """Remove a single ingredient label only when CIMA independently supplies its exact name."""
+    parsed = _parse_strength(strength)
+    if parsed is not None or not active_ingredients or len(active_ingredients) != 1:
+        return parsed
+    strength = normalize_name(strength)
+    ingredient = normalize_name(active_ingredients[0])
+    suffix = " " + ingredient
+    if not strength.endswith(suffix):
+        return None
+    parsed = _parse_strength(strength[:-len(suffix)])
+    return parsed if parsed is not None and len(parsed) == 1 else None
 
 
 def _parse_strength(strength: str) -> list[tuple[str, Fraction]] | None:
