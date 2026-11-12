@@ -88,7 +88,7 @@ def use_chips(uses: list[str], *, compact: bool = False, full_text: bool = False
         return ft.Column(
             controls=[_use_chip(use, full_text=True) for use in uses],
             spacing=CARD_SPACING,
-            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+            horizontal_alignment=ft.CrossAxisAlignment.START,
             tight=True,
         )
     return ft.Row(
