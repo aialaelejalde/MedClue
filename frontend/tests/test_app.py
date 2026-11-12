@@ -337,9 +337,13 @@ def test_android_back_from_details_or_camera_returns_home(app_context, source):
         {"name": "First", "national_code": "1"}, {"name": "Second", "national_code": "2"},
     ]}, PossibleMatchesScreen),
     ({"status": "not_identified"}, PossibleMatchResultScreen),
-    ({"status": "no_match", "suggested_candidate": {"name": "Suggested"}}, PossibleMatchResultScreen),
+    ({"status": "no_match", "suggested_candidate": {
+        "name": "Suggested", "strength": "100 mg", "form": "Comprimidos recubiertos",
+    }}, PossibleMatchResultScreen),
     ({"status": "connection_error", "failed_step": "image_analysis"}, PossibleMatchResultScreen),
-    ({"status": "timeout", "failed_step": "cima_verification"}, PossibleMatchResultScreen),
+    ({"status": "timeout", "failed_step": "cima_verification", "suggested_candidate": {
+        "name": "Suggested", "strength": None, "form": "Comprimidos recubiertos",
+    }}, PossibleMatchResultScreen),
 ])
 def test_identification_result_opens_correct_screen_and_back_returns_to_camera(app_context, result, screen_type):
     async def run():
@@ -349,6 +353,20 @@ def test_identification_result_opens_correct_screen_and_back_returns_to_camera(a
         await select_tab(app, 1)
         await app._screen._on_identify(b"captured photo", "image/jpeg")
         assert_screen(app, screen_type, 1)
+        if isinstance(app._screen, PossibleMatchResultScreen):
+            content = app._screen.content.content.controls[1].controls
+            if result["status"] != "not_identified":
+                expected_icon = ft.Icons.ERROR_OUTLINE if result["status"] == "no_match" else ft.Icons.WARNING_AMBER_ROUNDED
+                assert content[0].controls[0].icon == expected_icon
+                assert content[0].horizontal_alignment == ft.CrossAxisAlignment.CENTER
+            if result.get("suggested_candidate"):
+                candidate = result["suggested_candidate"]
+                details = content[-2].content.controls
+                assert details[0].value == candidate["name"]
+                expected_description = " · ".join(candidate[field] for field in ("strength", "form") if candidate.get(field))
+                assert [text.value for text in details[1:]] == ([expected_description] if expected_description else [])
+                assert all(text.text_align == ft.TextAlign.CENTER and text.max_lines is None for text in details)
+            assert content[-1].text_align == ft.TextAlign.CENTER
         app_context.error.assert_not_awaited()
         await press_back(app)
         assert_screen(app, IdentifyScreen, 1)
@@ -482,7 +500,10 @@ def test_selecting_candidate_checks_its_index_and_opens_the_result(app_context):
 def test_try_again_retries_the_session_and_opens_the_result(app_context):
     async def run():
         app = app_context.app
-        app_context.session.identify.return_value = {"status": "timeout", "failed_step": "cima_verification"}
+        app_context.session.identify.return_value = {
+            "status": "timeout", "failed_step": "cima_verification",
+            "suggested_candidate": {"name": "Suggested", "strength": "100 mg", "form": None},
+        }
         app_context.session.retry.return_value = {
             "status": "verified", "medication": {"name": "Retried medication"}, "official_uses": [],
         }
@@ -490,6 +511,8 @@ def test_try_again_retries_the_session_and_opens_the_result(app_context):
         await select_tab(app, 1)
         await app._screen._on_identify(b"captured photo", "image/jpeg")
         assert_screen(app, PossibleMatchResultScreen, 1)
+        content = app._screen.content.content.controls[1].controls
+        assert content[-2].content.controls[1].value == "100 mg"
         await app._screen._retry_button.on_click(None)
         app_context.session.retry.assert_awaited_once_with()
         assert_screen(app, IdentificationResultScreen, 1)
@@ -508,6 +531,8 @@ def test_manual_entry_from_unconfirmed_result_keeps_photo_and_editable_suggested
         await select_tab(app, 1)
         await app._screen._on_identify(b"captured photo", "image/jpeg")
         assert_screen(app, PossibleMatchResultScreen, 1)
+        content = app._screen.content.content.controls[1].controls
+        assert len(content[-2].content.controls) == 1
         await app._screen._add_button.on_click(None)
         assert_screen(app, AddMedicationScreen, 2)
         form = app._screen.form

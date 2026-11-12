@@ -409,7 +409,7 @@ def test_unclear_strength_prevents_verification_even_with_one_result(strength):
         ("Example 2", "500 mg", "tablet", "EXAMPLE 2 500 mg TABLETS"),
     ],
 )
-def test_structured_strength_locates_name_without_parsing_form_suffix(name, strength, form, official_name):
+def test_full_name_strength_and_form_agree_with_structured_fields(name, strength, form, official_name):
     candidate = MedicationCandidate(name=name, strength=strength, form=form)
     presentation = CimaPresentation(
         name=official_name, strength=strength, form=form,
@@ -474,4 +474,92 @@ def test_partial_strength_in_a_full_name_does_not_allow_verification(strength, o
     result = find_presentation_matches(candidate, [presentation])
 
     assert result.presentations == [presentation]
+    assert result.verified is None
+
+
+@pytest.mark.parametrize("structured_form", ["GRAGEAS", "film-coated tablet"])
+def test_full_name_corroborates_a_generic_coating_without_equating_forms(structured_form):
+    candidate = MedicationCandidate(name="Example", strength="100 mg", form="comprimidos recubiertos")
+    presentation = CimaPresentation(
+        name="EXAMPLE 0,1 g COMPRIMIDOS RECUBIERTOS EFG", strength="100 mg", form=structured_form,
+        registration_number="000001", national_code="000002",
+    )
+
+    assert compare_forms(candidate.form, presentation.form) is None
+    assert find_presentation_matches(candidate, [presentation]).verified == presentation
+    without_suffix = presentation.model_copy(update={"name": "EXAMPLE"})
+    assert find_presentation_matches(candidate, [without_suffix]).verified is None
+
+
+@pytest.mark.parametrize(
+    "official_name, structured_strength, structured_form",
+    [
+        ("EXAMPLE 500 mg CAPSULAS", "500 mg", "tablet"),
+        ("EXAMPLE 250 mg TABLETS", "500 mg", "tablet"),
+        ("EXAMPLE 500 mg TABLETS", "250 mg", "tablet"),
+        ("EXAMPLE 500 mg COMPRIMIDOS DE LIBERACION PROLONGADA", "500 mg", "tablet"),
+        ("EXAMPLE 500 mg COMPRIMIDOS GASTRORRESISTENTES", "500 mg", "tablet"),
+        ("EXAMPLE 500 mg TABLETS", "500 mg", "unlisted form"),
+        ("EXAMPLE 500 mg TABLETS", None, "tablet"),
+        ("EXAMPLE 500 mg TABLETS", "500 mg", None),
+        ("EXAMPLE 500 mg TABLETS FOR ORAL USE", "500 mg", "tablet"),
+    ],
+)
+def test_name_evidence_never_overrides_contradictory_or_insufficient_fields(
+    candidate, official_name, structured_strength, structured_form,
+):
+    presentation = CimaPresentation(
+        name=official_name, strength=structured_strength, form=structured_form,
+        registration_number="000001", national_code="000002",
+    )
+
+    result = find_presentation_matches(candidate, [presentation])
+
+    assert result.presentations == [presentation]
+    assert result.verified is None
+
+
+@pytest.mark.parametrize(
+    "candidate_form, named_form, structured_form",
+    [
+        ("oral solution", "SOLUCION INYECTABLE", "SOLUCION ORAL"),
+        ("film-coated tablet", "COMPRIMIDOS RECUBIERTOS CON PELICULA", "GRAGEAS"),
+        ("comprimidos recubiertos", "COMPRIMIDOS RECUBIERTOS", "prolonged-release tablet"),
+        ("comprimidos recubiertos", "COMPRIMIDOS RECUBIERTOS", "capsule"),
+    ],
+)
+def test_named_forms_do_not_override_routes_release_or_specific_coatings(candidate_form, named_form, structured_form):
+    candidate = MedicationCandidate(name="Example", strength="100 mg", form=candidate_form)
+    presentation = CimaPresentation(
+        name=f"EXAMPLE 100 mg {named_form}", strength="100 mg", form=structured_form,
+        registration_number="000001", national_code="000002",
+    )
+
+    assert find_presentation_matches(candidate, [presentation]).verified is None
+
+
+def test_candidate_name_must_also_agree_with_its_extracted_fields(candidate, presentation):
+    inconsistent = candidate.model_copy(update={"name": "Example 500 mg capsules"})
+
+    result = find_presentation_matches(inconsistent, [presentation])
+
+    assert result.presentations == [presentation]
+    assert result.verified is None
+
+
+@pytest.mark.parametrize("inconsistent", [False, True])
+def test_name_based_verification_does_not_hide_an_alternative(inconsistent):
+    candidate = MedicationCandidate(name="Example", strength="100 mg", form="comprimidos recubiertos")
+    first = CimaPresentation(
+        name="EXAMPLE 100 mg COMPRIMIDOS RECUBIERTOS", strength="100 mg", form="GRAGEAS",
+        registration_number="000001", national_code="000002",
+    )
+    second = first.model_copy(update={
+        "registration_number": "000003", "national_code": "000004",
+        "form": "capsule" if inconsistent else "GRAGEAS",
+    })
+
+    result = find_presentation_matches(candidate, [first, second])
+
+    assert result.presentations == [first, second]
     assert result.verified is None

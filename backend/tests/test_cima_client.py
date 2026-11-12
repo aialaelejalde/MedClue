@@ -259,3 +259,24 @@ def test_general_form_suffix_variation_survives_search_grouping_and_matching(cim
     assert len(requests) == 2
     assert len(result.presentations) == 1
     assert result.verified == presentations[0]
+
+
+def test_official_name_resolves_coating_variation_without_extra_requests(cima_client):
+    client, requests, responses = cima_client
+    selected = medication(
+        registration="47077", name="DOXICICLINA NORMON 100 MG COMPRIMIDOS RECUBIERTOS",
+        strength="100 mg", form="GRAGEAS", codes=("693766", "693767"),
+    )
+    responses.extend([httpx.Response(200, json=search_page([selected])), httpx.Response(200, json=selected)])
+    candidate = MedicationCandidate(name="Doxiciclina Normon", strength="100 mg", form="comprimidos recubiertos")
+
+    presentations = asyncio.run(client.search_presentations(candidate.name))
+    result = find_presentation_matches(candidate, presentations)
+
+    assert len(presentations) == 1
+    assert result.verified == presentations[0]
+    assert result.verified.registration_number == "47077"
+    assert result.verified.name == selected["nombre"]
+    assert result.verified.form == "GRAGEAS"
+    assert [request.url.path for request in requests] == ["/cima/rest/medicamentos", "/cima/rest/medicamento"]
+    assert responses == []

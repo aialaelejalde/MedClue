@@ -1,4 +1,4 @@
-"""Show an unconfirmed name and the actions allowed for its result."""
+"""Show provisional medication details and the actions allowed for each result."""
 
 from collections.abc import Awaitable, Callable
 from copy import deepcopy
@@ -6,8 +6,8 @@ from copy import deepcopy
 import flet as ft
 
 from medclue_mobile.medications import Medication
-from medclue_mobile.ui.components import medication_name, medication_photo
-from medclue_mobile.ui.theme import CARD_SPACING, SCREEN_MARGIN, SECTION_SPACING
+from medclue_mobile.ui.components import medication_name, medication_photo, soft_card
+from medclue_mobile.ui.theme import CARD_SPACING, ICON_SIZE, PRIMARY_COLOR, SCREEN_MARGIN, SECTION_SPACING
 
 
 class PossibleMatchResultScreen(ft.Container):
@@ -35,12 +35,19 @@ class PossibleMatchResultScreen(ft.Container):
 
         candidate = result.get("suggested_candidate")
         name = None
+        description = []
         if candidate is not None:
             if not isinstance(candidate, dict):
                 raise ValueError("The suggested candidate must contain medication data.")
             name = candidate.get("name")
             if not isinstance(name, str) or not name.strip():
                 raise ValueError("The suggested medication name must contain text.")
+            for field in ("strength", "form"):
+                value = candidate.get(field)
+                if value is not None:
+                    if not isinstance(value, str) or not value.strip():
+                        raise ValueError("Suggested medication details must contain text or null.")
+                    description.append(value)
             if status == "not_identified" or failed_step == "image_analysis":
                 raise ValueError("Unfinished image analysis cannot include a suggested name.")
         if status == "no_match" and name is None:
@@ -83,12 +90,33 @@ class PossibleMatchResultScreen(ft.Container):
         controls = [
             ft.Text(title, theme_style=ft.TextThemeStyle.HEADLINE_LARGE, text_align=ft.TextAlign.CENTER),
         ]
+        if status != "not_identified":
+            warning_icon = ft.Icons.ERROR_OUTLINE if status == "no_match" else ft.Icons.WARNING_AMBER_ROUNDED
+            controls = [ft.Column(
+                controls=[ft.Icon(warning_icon, color=PRIMARY_COLOR, size=ICON_SIZE), *controls],
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                spacing=CARD_SPACING,
+                tight=True,
+            )]
         if name is not None:
             if status != "no_match":
                 controls.append(ft.Text(
                     "Possible match", theme_style=ft.TextThemeStyle.TITLE_LARGE, text_align=ft.TextAlign.CENTER,
                 ))
-            controls.append(medication_name(name, text_align=ft.TextAlign.CENTER))
+            details = [medication_name(
+                name, theme_style=ft.TextThemeStyle.TITLE_LARGE, text_align=ft.TextAlign.CENTER,
+            )]
+            if description:
+                details.append(ft.Text(
+                    " · ".join(description), theme_style=ft.TextThemeStyle.BODY_MEDIUM,
+                    text_align=ft.TextAlign.CENTER,
+                ))
+            controls.append(soft_card(ft.Column(
+                controls=details,
+                horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+                spacing=CARD_SPACING,
+                tight=True,
+            )))
         controls.append(ft.Text(
             message, theme_style=ft.TextThemeStyle.BODY_LARGE, text_align=ft.TextAlign.CENTER,
         ))
