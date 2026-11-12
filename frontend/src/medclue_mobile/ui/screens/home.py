@@ -8,7 +8,7 @@ import flet as ft
 from medclue_mobile.cabinet import MedicationCabinet
 from medclue_mobile.medications import Medication
 from medclue_mobile.ui.components import medication_name, medication_photo, soft_card, use_chips
-from medclue_mobile.ui.theme import (CARD_SPACING, CONTENT_PADDING, SCREEN_MARGIN)
+from medclue_mobile.ui.theme import CARD_SPACING, CONTENT_PADDING, INPUT_RADIUS, SCREEN_MARGIN
 
 
 class HomeScreen(ft.Container):
@@ -26,6 +26,7 @@ class HomeScreen(ft.Container):
         self._on_add = on_add
 
         self.search_field = ft.TextField(
+            border=ft.OutlineInputBorder(border_radius=INPUT_RADIUS),
             hint_text="Search name or use...",
             value="",
             prefix_icon=ft.Icons.SEARCH,
@@ -33,6 +34,7 @@ class HomeScreen(ft.Container):
             on_change=self._filters_changed,
         )
         self.sort_dropdown = ft.Dropdown(
+            border=ft.OutlineInputBorder(border_radius=INPUT_RADIUS),
             expand=True,
             expanded_insets=ft.Padding.all(0),
             label="Sort by",
@@ -132,15 +134,9 @@ class HomeScreen(ft.Container):
         async def open_medication(event: ft.Event) -> None:
             await self._on_open_medication(medication.id)
 
-        photo = medication_photo(None, height=96, width=96)
-        photo.height = None
-        if medication.photo:
-            photo.content = None
-            photo.image = ft.DecorationImage(src=medication.photo, fit=ft.BoxFit.COVER)
-
-        details = [medication_name(medication.name)]
-        details[0].max_lines = 2
-        details[0].overflow = ft.TextOverflow.ELLIPSIS
+        photo = medication_photo(medication.photo, height=None, width=96, fit=ft.BoxFit.COVER)
+        name = medication_name(medication.name, max_lines=2)
+        details = [name]
         if medication.uses:
             details.append(use_chips(medication.uses, compact=True))
 

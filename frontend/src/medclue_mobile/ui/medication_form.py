@@ -17,7 +17,7 @@ from medclue_mobile.medications import (
     validate_medication,
 )
 from medclue_mobile.ui.components import medication_photo, soft_section
-from medclue_mobile.ui.theme import CARD_SPACING, CONTENT_PADDING, MIN_TOUCH_TARGET_SIZE, SECTION_SPACING
+from medclue_mobile.ui.theme import CARD_SPACING, CONTENT_PADDING, INPUT_RADIUS, MIN_TOUCH_TARGET_SIZE, SECTION_SPACING
 
 
 FREQUENCY_LABELS = {
@@ -71,6 +71,7 @@ class MedicationForm(ft.Column):
         self._end_date = (self._original.treatment_end.end_date if self._original.treatment_end else None)
 
         self.name_field = ft.TextField(
+            border=ft.OutlineInputBorder(border_radius=INPUT_RADIUS),
             label="Suggested name" if suggested_name else "Medication name",
             value=self._original.name or "",
             helper=(
@@ -101,7 +102,10 @@ class MedicationForm(ft.Column):
             visible=bool(self._use_options), on_change=self._options_changed,
         )
         self._reason_fields = [
-            ft.TextField(label="Reason", value=reason, multiline=True)
+            ft.TextField(
+                label="Reason", value=reason, multiline=True,
+                border=ft.OutlineInputBorder(border_radius=INPUT_RADIUS),
+            )
             for reason in [*custom_reasons, ""]
         ]
         self._reason_group = ft.Column(
@@ -115,20 +119,27 @@ class MedicationForm(ft.Column):
             label="Write my own amount or instructions",
             value=amount is not None and amount.type == "custom", on_change=self._options_changed,
         )
-        self.amount_value = ft.TextField(label="Quantity", value=_number_text(amount.value) if amount else "")
+        self.amount_value = ft.TextField(
+            label="Quantity", value=_number_text(amount.value) if amount else "", expand=True,
+            border=ft.OutlineInputBorder(border_radius=INPUT_RADIUS),
+        )
         self.amount_unit = _dropdown(
             "Unit", {unit: AMOUNT_UNIT_LABELS[unit] for unit in AMOUNT_UNITS},
             amount.unit if amount else None,
         )
-        self.amount_text = ft.TextField(label="My amount or instructions", value=(amount.text or "") if amount else "", multiline=True)
-        self.amount_value.expand = True
-        self.amount_unit.expand = True
+        self.amount_text = ft.TextField(
+            label="My amount or instructions", value=(amount.text or "") if amount else "", multiline=True,
+            border=ft.OutlineInputBorder(border_radius=INPUT_RADIUS),
+        )
         self._quantity_group = ft.Row(controls=[self.amount_value, self.amount_unit], spacing=CARD_SPACING)
 
         frequency = self._original.frequency
         self.frequency_type = _dropdown("Frequency", FREQUENCY_LABELS, frequency.type if frequency else None)
         self.frequency_type.on_select = self._options_changed
-        self.frequency_value = ft.TextField(label="Every", value=_number_text(frequency.value) if frequency else "")
+        self.frequency_value = ft.TextField(
+            label="Every", value=_number_text(frequency.value) if frequency else "",
+            border=ft.OutlineInputBorder(border_radius=INPUT_RADIUS),
+        )
         self.frequency_unit = _dropdown(
             "Time unit", {unit: unit.capitalize() for unit in FREQUENCY_UNITS},
             frequency.unit if frequency else None,
@@ -137,12 +148,18 @@ class MedicationForm(ft.Column):
             controls=[self.frequency_value, ft.Row(controls=[self.frequency_unit])], spacing=CARD_SPACING, tight=True,
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
         )
-        self.frequency_text = ft.TextField(label="My frequency instructions", value=(frequency.text or "") if frequency else "", multiline=True)
+        self.frequency_text = ft.TextField(
+            label="My frequency instructions", value=(frequency.text or "") if frequency else "", multiline=True,
+            border=ft.OutlineInputBorder(border_radius=INPUT_RADIUS),
+        )
 
         food = self._original.food
         self.food_type = _dropdown("Food instructions", FOOD_LABELS, food.type if food else None)
         self.food_type.on_select = self._options_changed
-        self.food_text = ft.TextField(label="My food instructions", value=(food.text or "") if food else "", multiline=True)
+        self.food_text = ft.TextField(
+            label="My food instructions", value=(food.text or "") if food else "", multiline=True,
+            border=ft.OutlineInputBorder(border_radius=INPUT_RADIUS),
+        )
 
         self._prescription_button = ft.OutlinedButton(on_click=lambda event: self._pick_date(False))
         self._clear_prescription_button = ft.OutlinedButton("Clear date", on_click=lambda event: self._set_date(False, None))
@@ -153,6 +170,7 @@ class MedicationForm(ft.Column):
         self._clear_end_button = ft.OutlinedButton("Clear date", on_click=lambda event: self._set_date(True, None))
         self._end_date_group = ft.Row(controls=[self._end_button, self._clear_end_button], wrap=True)
         self.notes_field = ft.TextField(
+            border=ft.OutlineInputBorder(border_radius=INPUT_RADIUS),
             label="Additional notes", value=self._original.notes or "", multiline=True,
             hint_text="Write anything you'd like to remember about this medication...",
             text_vertical_align=-1,
@@ -376,6 +394,7 @@ def _field_group(controls: list[ft.Control], *, title: str | None = None) -> ft.
 
 def _dropdown(label: str | None, choices: dict[str, str], value: str | None = None) -> ft.Dropdown:
     return ft.Dropdown(
+        border=ft.OutlineInputBorder(border_radius=INPUT_RADIUS),
         expand=True,
         expanded_insets=ft.Padding.all(0),
         label=label,

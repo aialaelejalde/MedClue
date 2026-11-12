@@ -88,9 +88,7 @@ class PossibleMatchResultScreen(ft.Container):
                 controls.append(ft.Text(
                     "Possible match", theme_style=ft.TextThemeStyle.TITLE_LARGE, text_align=ft.TextAlign.CENTER,
                 ))
-            name_text = medication_name(name)
-            name_text.text_align = ft.TextAlign.CENTER
-            controls.append(name_text)
+            controls.append(medication_name(name, text_align=ft.TextAlign.CENTER))
         controls.append(ft.Text(
             message, theme_style=ft.TextThemeStyle.BODY_LARGE, text_align=ft.TextAlign.CENTER,
         ))

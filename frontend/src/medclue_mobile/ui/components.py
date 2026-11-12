@@ -52,10 +52,15 @@ def medication_name(
     name: str | None,
     *,
     theme_style: ft.TextThemeStyle = ft.TextThemeStyle.TITLE_MEDIUM,
+    max_lines: int | None = None,
+    text_align: ft.TextAlign | None = None,
 ) -> ft.Text:
     return ft.Text(
         (name or "").strip() or "Unknown medication",
         theme_style=theme_style,
+        max_lines=max_lines,
+        overflow=ft.TextOverflow.ELLIPSIS if max_lines is not None else None,
+        text_align=text_align,
     )
 
 
@@ -184,7 +189,7 @@ def floating_action_spacer(button: ft.FloatingActionButton, *, spacing: int) -> 
 def medication_photo(
     photo: bytes | None,
     *,
-    height: float,
+    height: float | None,
     width: float | None = None,
     fit: ft.BoxFit = ft.BoxFit.CONTAIN,
     aspect_ratio: float | None = None,
@@ -195,21 +200,19 @@ def medication_photo(
         color=PRIMARY_COLOR,
         semantics_label="No medication photo",
     )
-    content = (
-        ft.Image(
+    if photo:
+        fill_frame = aspect_ratio is not None or height is None
+        image = ft.Image(
             src=photo,
-            height=height,
-            width=width if width is not None else float("inf"),
+            height=None if fill_frame else height,
+            width=None if fill_frame else (width if width is not None else float("inf")),
             fit=fit,
             semantics_label="Medication photo",
             error_content=placeholder,
         )
-        if photo else placeholder
-    )
-    if photo and aspect_ratio is not None:
-        content.height = None
-        content.width = None
-        content = ft.Stack(controls=[content], fit=ft.StackFit.EXPAND)
+        content = ft.Stack(controls=[image], fit=ft.StackFit.EXPAND) if fill_frame else image
+    else:
+        content = placeholder
     return ft.Container(
         content=content,
         width=width,
