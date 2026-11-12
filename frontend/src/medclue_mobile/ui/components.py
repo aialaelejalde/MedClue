@@ -84,15 +84,8 @@ def use_chips(uses: list[str], *, compact: bool = False, full_text: bool = False
     """Show compact summaries or complete labels without changing saved text."""
     if compact and uses:
         return _CompactUseChips(uses)
-    if full_text:
-        return ft.Column(
-            controls=[_use_chip(use, full_text=True) for use in uses],
-            spacing=CARD_SPACING,
-            horizontal_alignment=ft.CrossAxisAlignment.START,
-            tight=True,
-        )
     return ft.Row(
-        controls=[_use_chip(use) for use in uses],
+        controls=[_use_chip(use, full_text=full_text) for use in uses],
         wrap=True,
         spacing=CARD_SPACING,
         run_spacing=CARD_SPACING,
@@ -116,9 +109,10 @@ class _CompactUseChips(ft.Stack):
             chip = _use_chip(use)
             chip.on_size_change = self._measure(f"use:{index}")
             measurements.append(chip)
-        ellipsis = _use_chip("…")
-        ellipsis.on_size_change = self._measure("ellipsis")
-        measurements.append(ellipsis)
+            # Require a readable prefix as well as the ellipsis when truncating.
+            minimum = _use_chip(use[:3] + "…")
+            minimum.on_size_change = self._measure(f"minimum:{index}")
+            measurements.append(minimum)
         for count in range(1, len(uses) + 1):
             measurements.append(ft.Text(
                 f"+{count}", theme_style=ft.TextThemeStyle.BODY_MEDIUM,
@@ -148,7 +142,7 @@ class _CompactUseChips(ft.Stack):
 
     def _fit(self) -> None:
         total = len(self._uses)
-        if self._available <= 0 or len(self._widths) < total * 2 + 1:
+        if self._available <= 0 or len(self._widths) < total * 3:
             return
         natural = [self._widths[f"use:{index}"] for index in range(total)]
         visible_widths = []
@@ -157,7 +151,8 @@ class _CompactUseChips(ft.Stack):
             counter_width = self._widths[f"count:{hidden}"] if hidden else 0
             gaps = CARD_SPACING * (count if hidden else count - 1)
             remaining = self._available - sum(natural[:count - 1]) - gaps - counter_width
-            if remaining >= min(natural[count - 1], self._widths["ellipsis"]):
+            minimum_width = min(natural[count - 1], self._widths[f"minimum:{count - 1}"])
+            if remaining >= minimum_width:
                 visible_widths = natural[:count - 1] + [min(natural[count - 1], remaining)]
                 break
         hidden = total - len(visible_widths)

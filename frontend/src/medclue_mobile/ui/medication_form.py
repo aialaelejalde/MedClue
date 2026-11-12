@@ -102,14 +102,11 @@ class MedicationForm(ft.Column):
             visible=bool(self._use_options), on_change=self._options_changed,
         )
         self._reason_fields = [
-            ft.TextField(
-                label="Reason", value=reason, multiline=True,
-                border=ft.OutlineInputBorder(border_radius=INPUT_RADIUS),
-            )
-            for reason in [*custom_reasons, ""]
+            _reason_field(reason) for reason in (custom_reasons or [""])
         ]
         self._reason_group = ft.Column(
-            controls=self._reason_fields, spacing=CARD_SPACING, tight=True,
+            controls=[*self._reason_fields, ft.TextButton("Add reason", on_click=self._add_reason)],
+            spacing=CARD_SPACING, tight=True,
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
         )
         self._unknown_reason = ft.Checkbox(label=UNKNOWN_REASON, value=UNKNOWN_REASON in self._original.uses)
@@ -227,6 +224,13 @@ class MedicationForm(ft.Column):
     def has_changes(self) -> bool:
         """Include incomplete input so leaving cannot silently discard it."""
         return self._snapshot() != self._initial_values
+
+    def _add_reason(self, event: ft.Event) -> None:
+        field = _reason_field()
+        self._reason_fields.append(field)
+        self._reason_group.controls.insert(-1, field)
+        self._fields.append(field)
+        self._refresh()
 
     def _checkbox_row(self, checkbox: ft.Checkbox) -> ft.Container:
         """Align long checkbox labels and let them wrap within the form."""
@@ -389,6 +393,13 @@ def _field_group(controls: list[ft.Control], *, title: str | None = None) -> ft.
         controls=([ft.Text(title, theme_style=ft.TextThemeStyle.TITLE_MEDIUM)] if title else []) + controls,
         spacing=CONTENT_PADDING, tight=True,
         horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+    )
+
+
+def _reason_field(value: str = "") -> ft.TextField:
+    return ft.TextField(
+        label="Reason", value=value, multiline=True,
+        border=ft.OutlineInputBorder(border_radius=INPUT_RADIUS),
     )
 
 
