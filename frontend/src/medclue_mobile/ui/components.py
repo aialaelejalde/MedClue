@@ -64,10 +64,12 @@ def medication_name(
     )
 
 
-def _use_chip(use: str) -> ft.Container:
+def _use_chip(use: str, *, full_text: bool = False) -> ft.Container:
     return ft.Container(
         content=ft.Text(
-            use, color=TEXT_COLOR, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS,
+            use, color=TEXT_COLOR,
+            max_lines=None if full_text else 1,
+            overflow=None if full_text else ft.TextOverflow.ELLIPSIS,
             theme_style=ft.TextThemeStyle.BODY_MEDIUM,
         ),
         padding=ft.Padding.symmetric(horizontal=12, vertical=8),
@@ -78,10 +80,17 @@ def _use_chip(use: str) -> ft.Container:
     )
 
 
-def use_chips(uses: list[str], *, compact: bool = False) -> ft.Control:
-    """Keep original labels and measure compact chips using the device's font."""
+def use_chips(uses: list[str], *, compact: bool = False, full_text: bool = False) -> ft.Control:
+    """Show compact summaries or complete labels without changing saved text."""
     if compact and uses:
         return _CompactUseChips(uses)
+    if full_text:
+        return ft.Column(
+            controls=[_use_chip(use, full_text=True) for use in uses],
+            spacing=CARD_SPACING,
+            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+            tight=True,
+        )
     return ft.Row(
         controls=[_use_chip(use) for use in uses],
         wrap=True,

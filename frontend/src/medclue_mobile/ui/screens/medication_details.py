@@ -65,7 +65,7 @@ class MedicationDetailsScreen(ft.Container):
             medication_photo(medication.photo, height=180, aspect_ratio=4 / 3, fit=ft.BoxFit.COVER),
         ]
         if medication.uses:
-            controls.append(soft_section("Prescribed for", [use_chips(medication.uses)]))
+            controls.append(soft_section("Prescribed for", [use_chips(medication.uses, full_text=True)]))
 
         if medication.amount is not None:
             amount = medication.amount
