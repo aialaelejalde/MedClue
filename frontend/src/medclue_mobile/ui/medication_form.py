@@ -1,6 +1,7 @@
 """Build the form for adding and editing a medication."""
 
 from copy import deepcopy
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import date, datetime
 
@@ -17,7 +18,10 @@ from medclue_mobile.medications import (
     validate_medication,
 )
 from medclue_mobile.ui.components import medication_photo, soft_section
-from medclue_mobile.ui.theme import ACCENT_COLOR, CARD_SPACING, CONTENT_PADDING, INPUT_RADIUS, MIN_TOUCH_TARGET_SIZE, SECTION_SPACING
+from medclue_mobile.ui.theme import (
+    ACCENT_COLOR, BLUE_SURFACE, CARD_COLOR, PRIMARY_COLOR, TEXT_COLOR,
+    CARD_SPACING, CONTENT_PADDING, INPUT_RADIUS, MIN_TOUCH_TARGET_SIZE, SECTION_SPACING,
+)
 
 
 FREQUENCY_LABELS = {
@@ -50,6 +54,33 @@ AMOUNT_UNIT_LABELS = {
     "sachets": "Sachet(s)", "patches": "Patch(es)", "mg": "mg", "g": "g",
 }
 UNKNOWN_REASON = "I don't know / I don't remember"
+
+
+class _UseOption(ft.Container):
+    """An accessible text option whose selected state is shown in blue."""
+
+    def __init__(self, label: str, value: bool, on_change: Callable[[ft.Event], None]):
+        super().__init__(
+            content=ft.Semantics(content=ft.Text(label, size=14), button=True, selected=value),
+            padding=CONTENT_PADDING, border_radius=INPUT_RADIUS, ink=True, on_click=self._toggle,
+        )
+        self._on_change = on_change
+        self.value = value
+
+    @property
+    def value(self) -> bool:
+        return self._value
+
+    @value.setter
+    def value(self, selected: bool) -> None:
+        self._value = selected
+        self.bgcolor = BLUE_SURFACE if selected else CARD_COLOR
+        self.content.selected = selected
+        self.content.content.color = PRIMARY_COLOR if selected else TEXT_COLOR
+
+    def _toggle(self, event: ft.Event) -> None:
+        self.value = not self.value
+        self._on_change(event)
 
 
 class MedicationForm(ft.Column):
@@ -97,13 +128,13 @@ class MedicationForm(ft.Column):
             if reason not in self._official_uses and reason != UNKNOWN_REASON
         ]
         self._use_options = [
-            ft.Checkbox(label=use, value=use in self._original.uses, on_change=self._options_changed)
+            _UseOption(use, use in self._original.uses, self._options_changed)
             for use in self._official_uses
         ]
         self._use_summary = ft.Text(theme_style=ft.TextThemeStyle.BODY_SMALL)
         selector_shape = ft.RoundedRectangleBorder(radius=INPUT_RADIUS, side=ft.BorderSide(1, ACCENT_COLOR))
         self._use_list = ft.ListView(controls=[ft.Column(
-            controls=[self._checkbox_row(option) for option in self._use_options],
+            controls=self._use_options,
             spacing=CARD_SPACING,
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
             tight=True,
@@ -412,6 +443,21 @@ class MedicationForm(ft.Column):
     def _refresh(self) -> None:
         if self.parent is not None:
             self.update()
+
+
+def form_screen_layout(title: str, form: MedicationForm, save_button: ft.FilledButton) -> ft.SafeArea:
+    """Share the scrolling form and fixed save action between Add and Edit."""
+    form.controls.append(ft.Container(height=MIN_TOUCH_TARGET_SIZE + CARD_SPACING))
+    return ft.SafeArea(content=ft.Column(
+        controls=[
+            ft.Text(title, theme_style=ft.TextThemeStyle.HEADLINE_LARGE),
+            ft.Stack(controls=[form, ft.Container(
+                content=ft.Row([save_button]), left=0, right=0, bottom=0,
+            )], fit=ft.StackFit.EXPAND, expand=True),
+        ],
+        spacing=CARD_SPACING, expand=True,
+        horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+    ))
 
 
 def _form_section(title: str, groups: list[ft.Control]) -> ft.Container:

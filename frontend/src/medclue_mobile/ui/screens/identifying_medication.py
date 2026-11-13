@@ -4,7 +4,8 @@ from collections.abc import Awaitable, Callable
 
 import flet as ft
 
-from medclue_mobile.ui.theme import PRIMARY_COLOR, SCREEN_MARGIN, SECTION_SPACING
+from medclue_mobile.ui.components import action_button, soft_card
+from medclue_mobile.ui.theme import PRIMARY_COLOR, ACCENT_COLOR, LAVENDER_SURFACE, SCREEN_MARGIN, SECTION_SPACING
 
 
 class IdentifyingMedicationScreen(ft.Container):
@@ -12,19 +13,23 @@ class IdentifyingMedicationScreen(ft.Container):
         super().__init__(expand=True, padding=SCREEN_MARGIN)
         self._on_cancel = on_cancel
         self._cancelling = False
-        self._cancel_button = ft.OutlinedButton("Cancel", on_click=self._cancel, expand=True)
+        self._cancel_button = action_button("Cancel", self._cancel, kind="secondary")
         self.content = ft.SafeArea(
-            content=ft.Column(
+            content=soft_card(ft.Column(
                 controls=[
-                    ft.ProgressRing(color=PRIMARY_COLOR),
+                    ft.Container(content=ft.Stack([
+                        ft.Container(content=ft.Icon(ft.Icons.CAMERA_ALT_OUTLINED, color=PRIMARY_COLOR, size=28),
+                                     width=72, height=72, bgcolor=LAVENDER_SURFACE, border_radius=36, alignment=ft.Alignment.CENTER),
+                        ft.ProgressRing(width=72, height=72, color=ACCENT_COLOR, stroke_width=3),
+                    ]), alignment=ft.Alignment.CENTER),
                     ft.Text(
                         "Identifying medication...",
-                        theme_style=ft.TextThemeStyle.HEADLINE_LARGE,
+                        theme_style=ft.TextThemeStyle.TITLE_LARGE,
                         text_align=ft.TextAlign.CENTER,
                     ),
                     ft.Text(
                         "Please wait while we identify your medication.",
-                        theme_style=ft.TextThemeStyle.BODY_LARGE,
+                        theme_style=ft.TextThemeStyle.BODY_MEDIUM,
                         text_align=ft.TextAlign.CENTER,
                     ),
                     ft.Row(controls=[self._cancel_button]),
@@ -34,7 +39,7 @@ class IdentifyingMedicationScreen(ft.Container):
                 spacing=SECTION_SPACING,
                 scroll=ft.ScrollMode.AUTO,
                 expand=True,
-            )
+            ))
         )
 
     async def _cancel(self, event: ft.Event) -> None:

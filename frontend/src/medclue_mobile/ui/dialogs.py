@@ -1,10 +1,12 @@
 """Show confirmation and error dialogs."""
 
 import asyncio
+import sqlite3
+from collections.abc import Callable
 
 import flet as ft
 
-from medclue_mobile.ui.theme import ACCENT_COLOR, BACKGROUND_COLOR, CARD_RADIUS, CARD_SPACING
+from medclue_mobile.ui.theme import ACCENT_COLOR, CARD_COLOR, CARD_RADIUS, CARD_SPACING
 
 
 async def confirm_duplicate(page: ft.Page) -> bool:
@@ -37,6 +39,22 @@ async def confirm_delete_medication(page: ft.Page) -> bool:
         action_text="Delete",
         cancel_text="Cancel",
     )
+
+
+async def delete_medication_with_confirmation(page: ft.Page, delete: Callable[[], None]) -> bool:
+    """Use the same confirmation and recovery flow from Home and details."""
+    if not await confirm_delete_medication(page):
+        return False
+    while True:
+        try:
+            delete()
+            return True
+        except (sqlite3.Error, OSError, ValueError, LookupError):
+            if not await show_error(
+                page, "Cannot delete medication",
+                "We couldn't delete this medication. Please try again.", action_text="Try again",
+            ):
+                return False
 
 
 async def confirm_leave_identification(page: ft.Page) -> bool:
@@ -79,7 +97,7 @@ async def show_photo_too_large(page: ft.Page) -> bool:
 
 def show_save_success(page: ft.Page) -> None:
     page.show_dialog(ft.SnackBar(
-        content=ft.Text("Medication saved successfully", color=BACKGROUND_COLOR),
+        content=ft.Text("Medication saved successfully", color=CARD_COLOR),
         bgcolor=ACCENT_COLOR,
     ))
 
@@ -117,7 +135,7 @@ async def _show_dialog(
         on_dismiss=dismiss,
         modal=False,
         scrollable=True,
-        bgcolor=BACKGROUND_COLOR,
+        bgcolor=CARD_COLOR,
         shape=ft.RoundedRectangleBorder(radius=CARD_RADIUS),
         actions_overflow_button_spacing=CARD_SPACING,
     )

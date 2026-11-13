@@ -6,8 +6,8 @@ from copy import deepcopy
 import flet as ft
 
 from medclue_mobile.medications import Medication
-from medclue_mobile.ui.components import medication_name, soft_card
-from medclue_mobile.ui.theme import CARD_SPACING, SCREEN_MARGIN
+from medclue_mobile.ui.components import action_button, match_option, medication_name, result_layout, status_photo
+from medclue_mobile.ui.theme import CARD_SPACING, SCREEN_MARGIN, BLUE_SURFACE, PRIMARY_COLOR, CARD_COLOR
 
 
 class PossibleMatchesScreen(ft.Container):
@@ -55,57 +55,46 @@ class PossibleMatchesScreen(ft.Container):
             if not isinstance(suggested_name, str) or not suggested_name.strip():
                 raise ValueError("The suggested medication name must contain text.")
 
-        self._medication = Medication(name=suggested_name, photo=photo)
+        self._medication = Medication(name=suggested_name, photo=photo,
+                                      strength=suggested_candidate.get("strength") if suggested_candidate else None,
+                                      form=suggested_candidate.get("form") if suggested_candidate else None)
         self._on_select = on_select
         self._on_retake = on_retake
         self._on_add = on_add
         self._busy = False
-        self._match_list = ft.ListView(
+        self._match_list = ft.Column(
             controls=[self._match_card(index, option) for index, option in enumerate(options)],
             spacing=CARD_SPACING,
-            expand=True,
+            tight=True,
+            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
         )
-        self._retake_button = ft.OutlinedButton("Retake photo", on_click=self._retake)
-        self._add_button = ft.TextButton("Add medication manually", on_click=self._add)
-        self.content = ft.SafeArea(
-            content=ft.Column(
-                controls=[
-                    ft.Text("Possible matches", theme_style=ft.TextThemeStyle.HEADLINE_LARGE),
-                    ft.Text(
-                        "Select the medication that matches your package.",
-                        theme_style=ft.TextThemeStyle.BODY_LARGE,
-                    ),
-                    self._match_list,
-                    ft.Column(
-                        controls=[self._retake_button, self._add_button],
-                        spacing=6,
-                        horizontal_alignment=ft.CrossAxisAlignment.START,
-                        tight=True,
-                    ),
-                ],
-                spacing=CARD_SPACING,
-                expand=True,
-            )
-        )
+        self._retake_button = action_button("Retake photo", self._retake, icon=ft.Icons.CAMERA_ALT_OUTLINED, kind="secondary")
+        self._add_button = action_button("Add medication manually", self._add, icon=ft.Icons.ADD_CIRCLE_OUTLINE, kind="tertiary")
+        self.content = result_layout([
+            status_photo(photo, "possible", "Possible matches"),
+            medication_name("Possible matches", theme_style=ft.TextThemeStyle.TITLE_LARGE),
+            ft.Text("Select the medication that matches your item", theme_style=ft.TextThemeStyle.BODY_MEDIUM),
+            self._match_list,
+        ], [self._retake_button, self._add_button])
 
     def _match_card(self, index: int, option: dict) -> ft.Container:
         async def select(event: ft.Event) -> None:
             if self._busy:
                 return
+            card.bgcolor = BLUE_SURFACE
+            card.border = ft.Border.all(2, PRIMARY_COLOR)
+            indicator = card.content.controls[1]
+            indicator.bgcolor = PRIMARY_COLOR
+            indicator.border = ft.Border.all(1, PRIMARY_COLOR)
+            indicator.content = ft.Icon(ft.Icons.CHECK, color=CARD_COLOR, size=16)
             self._set_busy(True)
             try:
                 await self._on_select(index)
             finally:
                 self._set_busy(False)
 
-        controls = [medication_name(option["name"])]
-        for field in ("strength", "form"):
-            if option.get(field):
-                controls.append(ft.Text(option[field], theme_style=ft.TextThemeStyle.BODY_MEDIUM))
-        return soft_card(
-            ft.Column(controls=controls, spacing=CARD_SPACING, tight=True),
-            on_click=select,
-        )
+        card = match_option(option["name"], option.get("strength"), option.get("form"), on_click=select)
+        return card
 
     async def _retake(self, event: ft.Event) -> None:
         if self._busy:
@@ -128,6 +117,8 @@ class PossibleMatchesScreen(ft.Container):
     def _set_busy(self, busy: bool) -> None:
         self._busy = busy
         self._match_list.disabled = busy
+        for card in self._match_list.controls:
+            card.disabled = busy
         self._retake_button.disabled = busy
         self._add_button.disabled = busy
         if self.parent is not None:

@@ -7,8 +7,9 @@ import flet as ft
 
 from medclue_mobile.cabinet import MedicationCabinet
 from medclue_mobile.medications import Medication
-from medclue_mobile.ui.components import medication_name, medication_photo, soft_card, use_chips
-from medclue_mobile.ui.theme import CARD_SPACING, CONTENT_PADDING, INPUT_RADIUS, SCREEN_MARGIN
+from medclue_mobile.ui.components import action_button, medication_name, medication_photo, medication_subtitle, soft_card, use_chips
+from medclue_mobile.ui.dialogs import delete_medication_with_confirmation
+from medclue_mobile.ui.theme import CARD_SPACING, CONTENT_PADDING, SCREEN_MARGIN, CARD_COLOR, PRIMARY_COLOR, BLUE_SURFACE, DANGER_COLOR
 
 
 class HomeScreen(ft.Container):
@@ -18,15 +19,20 @@ class HomeScreen(ft.Container):
         on_open_medication: Callable[[int], Awaitable[None]],
         on_identify: Callable[[], Awaitable[None]],
         on_add: Callable[[], Awaitable[None]],
+        on_edit: Callable[[int], Awaitable[None]],
     ):
         super().__init__(expand=True, padding=SCREEN_MARGIN)
         self._cabinet = cabinet
         self._on_open_medication = on_open_medication
         self._on_identify = on_identify
         self._on_add = on_add
+        self._on_edit = on_edit
+        self._busy = False
 
         self.search_field = ft.TextField(
-            border=ft.OutlineInputBorder(border_radius=INPUT_RADIUS),
+            border=ft.OutlineInputBorder(border_radius=28, side=ft.BorderSide(0, ft.Colors.TRANSPARENT)),
+            filled=True, fill_color=CARD_COLOR,
+            hint_style=ft.TextStyle(color=PRIMARY_COLOR, size=14),
             hint_text="Search name or use...",
             value="",
             prefix_icon=ft.Icons.SEARCH,
@@ -34,17 +40,20 @@ class HomeScreen(ft.Container):
             on_change=self._filters_changed,
         )
         self.sort_dropdown = ft.Dropdown(
-            border=ft.OutlineInputBorder(border_radius=INPUT_RADIUS),
-            expand=True,
+            border=ft.OutlineInputBorder(border_radius=24, side=ft.BorderSide(0, ft.Colors.TRANSPARENT)),
+            filled=True, fill_color=CARD_COLOR, dense=True, text_size=12,
+            content_padding=ft.Padding.symmetric(horizontal=12, vertical=8),
+            width=174,
             expanded_insets=ft.Padding.all(0),
-            label="Sort by",
             value="recently_added",
             options=[
                 ft.DropdownOption(key="recently_added", text="Recently added"),
                 ft.DropdownOption(key="name_az", text="Name A-Z"),
             ],
             on_select=self._filters_changed,
+            menu_style=ft.MenuStyle(bgcolor={ft.ControlState.DEFAULT: CARD_COLOR, ft.ControlState.FOCUSED: BLUE_SURFACE}),
         )
+        self._count = ft.Text("0 medications", size=12, color=PRIMARY_COLOR)
         self._medication_list = ft.ListView(expand=True, spacing=CARD_SPACING)
         self._no_results = ft.Column(
             controls=[
@@ -58,37 +67,27 @@ class HomeScreen(ft.Container):
             expand=True,
             visible=False,
         )
-        self._empty_state = ft.Column(
+        self._empty_state = soft_card(ft.Column(
             controls=[
-                ft.Container(
-                    content=ft.Text(
-                        "Your medicine cabinet is empty",
-                        theme_style=ft.TextThemeStyle.TITLE_MEDIUM,
-                        text_align=ft.TextAlign.CENTER,
-                    ),
-                    alignment=ft.Alignment.CENTER,
-                    expand=True,
-                ),
-                ft.Column(
-                    controls=[
-                        ft.FilledButton("Identify medication", on_click=self._identify),
-                        ft.OutlinedButton("Add medication manually", on_click=self._add),
-                    ],
-                    spacing=6,
-                    horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
-                    tight=True,
-                ),
+                ft.Icon(ft.Icons.INVENTORY_2_OUTLINED, size=56, color=PRIMARY_COLOR),
+                medication_name("Your cabinet is empty", text_align=ft.TextAlign.CENTER),
+                ft.Text("No medications saved yet. Add your first medication or identify one to get started.",
+                        theme_style=ft.TextThemeStyle.BODY_MEDIUM, text_align=ft.TextAlign.CENTER),
+                ft.Row([action_button("Add medication", self._add, icon=ft.Icons.ADD_CIRCLE_OUTLINE)]),
+                ft.Row([action_button("Identify medication", self._identify, icon=ft.Icons.CAMERA_ALT_OUTLINED, kind="secondary")]),
             ],
+            alignment=ft.MainAxisAlignment.CENTER,
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
-            expand=True,
-            visible=False,
-        )
+            spacing=CONTENT_PADDING, scroll=ft.ScrollMode.AUTO, expand=True,
+        ))
+        self._empty_state.expand = True
+        self._empty_state.visible = False
         self.content = ft.SafeArea(
             content=ft.Column(
                 controls=[
-                    ft.Text("My medications", theme_style=ft.TextThemeStyle.HEADLINE_LARGE),
-                    self.search_field,
-                    ft.Row(controls=[self.sort_dropdown]),
+                    ft.Container(content=self.search_field, border_radius=28,
+                                 shadow=ft.BoxShadow(color=ft.Colors.with_opacity(0.04, PRIMARY_COLOR), blur_radius=4, offset=ft.Offset(0, 2))),
+                    ft.Row(controls=[self.sort_dropdown, self._count], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                     self._medication_list,
                     self._empty_state,
                     self._no_results,
@@ -108,6 +107,13 @@ class HomeScreen(ft.Container):
         self._medication_list.visible = True
         try:
             medications = self._cabinet.list_medications(query, self.sort_dropdown.value)
+            total = len(self._cabinet.list_medications()) if query.strip() else len(medications)
+            self._count.value = f"{total} medications"
+            for option in self.sort_dropdown.options:
+                option.style = ft.ButtonStyle(
+                    bgcolor=BLUE_SURFACE if option.key == self.sort_dropdown.value else CARD_COLOR,
+                    color=PRIMARY_COLOR,
+                )
         except (sqlite3.Error, OSError, ValueError):
             controls = [
                 ft.Text("Cannot load medications", theme_style=ft.TextThemeStyle.TITLE_MEDIUM),
@@ -134,9 +140,22 @@ class HomeScreen(ft.Container):
         async def open_medication(event: ft.Event) -> None:
             await self._on_open_medication(medication.id)
 
-        photo = medication_photo(medication.photo, height=None, width=96, fit=ft.BoxFit.COVER)
+        async def edit_medication(event: ft.Event) -> None:
+            await self._on_edit(medication.id)
+
+        async def delete_medication(event: ft.Event) -> None:
+            if self._busy:
+                return
+            self._busy = True
+            try:
+                if await delete_medication_with_confirmation(self.page, lambda: self._cabinet.delete_medication(medication.id)):
+                    self.refresh()
+            finally:
+                self._busy = False
+
+        photo = medication_photo(medication.photo, height=96, width=80, fit=ft.BoxFit.COVER)
         name = medication_name(medication.name, max_lines=2)
-        details = [name]
+        details = [name, medication_subtitle(medication.strength, medication.form)]
         if medication.uses:
             details.append(use_chips(medication.uses, compact=True))
 
@@ -150,16 +169,21 @@ class HomeScreen(ft.Container):
                             horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
                             alignment=ft.MainAxisAlignment.CENTER,
                         ),
-                        padding=CONTENT_PADDING,
                         expand=True,
                     ),
+                    ft.Container(content=ft.PopupMenuButton(
+                        icon=ft.Icons.MORE_VERT, tooltip="Medication actions",
+                        items=[
+                            ft.PopupMenuItem(content="Open", on_click=open_medication),
+                            ft.PopupMenuItem(content="Edit", on_click=edit_medication),
+                            ft.PopupMenuItem(content=ft.Text("Delete", color=DANGER_COLOR), on_click=delete_medication),
+                        ],
+                    ), alignment=ft.Alignment.TOP_RIGHT, height=96),
                 ],
-                spacing=0,
-                height=144,
-                vertical_alignment=ft.CrossAxisAlignment.STRETCH,
+                spacing=CARD_SPACING,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
             on_click=open_medication,
-            padding=0,
         )
 
     def _filters_changed(self, event: ft.Event) -> None:

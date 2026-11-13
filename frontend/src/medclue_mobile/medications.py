@@ -62,6 +62,8 @@ class Medication:
     notes: str | None = None
     id: int | None = None
     created_at: datetime | None = None
+    strength: str | None = None
+    form: str | None = None
 
 
 def validate_medication(medication: Medication) -> None:
@@ -71,6 +73,8 @@ def validate_medication(medication: Medication) -> None:
 
     _validate_optional_text(medication.name, "Medication name")
     _validate_optional_text(medication.notes, "Additional notes")
+    _validate_optional_text(medication.strength, "Strength")
+    _validate_optional_text(medication.form, "Pharmaceutical form")
 
     if medication.photo is not None:
         if not isinstance(medication.photo, bytes) or not medication.photo:

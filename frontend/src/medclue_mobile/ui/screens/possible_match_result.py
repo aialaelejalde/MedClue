@@ -6,8 +6,8 @@ from copy import deepcopy
 import flet as ft
 
 from medclue_mobile.medications import Medication
-from medclue_mobile.ui.components import medication_name, medication_photo, soft_card
-from medclue_mobile.ui.theme import CARD_SPACING, ICON_SIZE, PRIMARY_COLOR, SCREEN_MARGIN, SECTION_SPACING
+from medclue_mobile.ui.components import action_button, match_option, medication_name, result_layout, status_photo
+from medclue_mobile.ui.theme import SCREEN_MARGIN
 
 
 class PossibleMatchResultScreen(ft.Container):
@@ -35,7 +35,6 @@ class PossibleMatchResultScreen(ft.Container):
 
         candidate = result.get("suggested_candidate")
         name = None
-        description = []
         if candidate is not None:
             if not isinstance(candidate, dict):
                 raise ValueError("The suggested candidate must contain medication data.")
@@ -47,28 +46,28 @@ class PossibleMatchResultScreen(ft.Container):
                 if value is not None:
                     if not isinstance(value, str) or not value.strip():
                         raise ValueError("Suggested medication details must contain text or null.")
-                    description.append(value)
             if status == "not_identified" or failed_step == "image_analysis":
                 raise ValueError("Unfinished image analysis cannot include a suggested name.")
         if status == "no_match" and name is None:
             raise ValueError("An unconfirmed match needs a suggested medication name.")
 
-        self._medication = Medication(name=name, photo=photo)
+        self._medication = Medication(name=name, photo=photo,
+                                      strength=candidate.get("strength") if candidate else None,
+                                      form=candidate.get("form") if candidate else None)
         self._on_retry = on_retry
         self._on_retake = on_retake
         self._on_add = on_add
         self._busy = False
-        self._retry_button = ft.FilledButton(
-            "Try again", on_click=self._retry, visible=status in ("connection_error", "timeout"),
-        )
-        self._retake_button = ft.OutlinedButton(
-            "Retake photo", on_click=self._retake, visible=status != "connection_error",
-        )
-        self._add_button = ft.OutlinedButton("Add medication manually", on_click=self._add)
+        self._retry_button = action_button("Try again", self._retry, icon=ft.Icons.SYNC, kind="secondary")
+        self._retry_button.visible = status in ("connection_error", "timeout")
+        self._retake_button = action_button("Retake photo", self._retake, icon=ft.Icons.CAMERA_ALT_OUTLINED,
+                                            kind="tertiary" if status == "timeout" else "secondary")
+        self._retake_button.visible = status != "connection_error"
+        self._add_button = action_button("Add medication manually", self._add, icon=ft.Icons.ADD_CIRCLE_OUTLINE, kind="tertiary")
 
         if status == "not_identified":
             title = "Medication not identified"
-            message = "We couldn't identify the medication in this photo."
+            message = "We couldn't identify the medication from this photo."
         elif status == "no_match":
             title = "Possible match"
             message = (
@@ -76,10 +75,13 @@ class PossibleMatchResultScreen(ft.Container):
                 "We can't show its official uses."
             )
         elif status == "timeout":
-            title = "Identification taking too long"
-            message = "We couldn't finish identifying the medication in time. Please try again."
+            title = "Possible match" if name else "Medication not identified"
+            message = (
+                "We couldn't finish identifying the medication in time. We can't show its official uses."
+                if name else "We couldn't finish identifying the medication in time. Please try again."
+            )
         else:
-            title = "Connection problem"
+            title = "Possible match" if name else "Medication not identified"
             message = (
                 "We couldn't identify the medication because of a connection problem. Please try again."
                 if failed_step == "image_analysis" else
@@ -88,65 +90,15 @@ class PossibleMatchResultScreen(ft.Container):
             )
 
         controls = [
-            ft.Text(title, theme_style=ft.TextThemeStyle.HEADLINE_LARGE, text_align=ft.TextAlign.CENTER),
+            status_photo(photo, "possible" if name else "unidentified", "Possible match" if name else "Not identified"),
+            medication_name(title, theme_style=ft.TextThemeStyle.TITLE_LARGE),
+            ft.Text(message, theme_style=ft.TextThemeStyle.BODY_MEDIUM),
         ]
-        if status != "not_identified":
-            warning_icon = ft.Icons.ERROR_OUTLINE if status == "no_match" else ft.Icons.WARNING_AMBER_ROUNDED
-            controls = [ft.Column(
-                controls=[ft.Icon(warning_icon, color=PRIMARY_COLOR, size=ICON_SIZE * 1.25), *controls],
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                spacing=CARD_SPACING,
-                tight=True,
-            )]
-        if name is not None:
-            if status != "no_match":
-                controls.append(ft.Text(
-                    "Possible match", theme_style=ft.TextThemeStyle.TITLE_LARGE, text_align=ft.TextAlign.CENTER,
-                ))
-            details = [medication_name(
-                name, theme_style=ft.TextThemeStyle.TITLE_LARGE, text_align=ft.TextAlign.CENTER,
-            )]
-            if description:
-                details.append(ft.Text(
-                    " · ".join(description), theme_style=ft.TextThemeStyle.BODY_MEDIUM,
-                    text_align=ft.TextAlign.CENTER,
-                ))
-            controls.append(soft_card(ft.Column(
-                controls=details,
-                horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
-                spacing=CARD_SPACING,
-                tight=True,
-            )))
-        controls.append(ft.Text(
-            message, theme_style=ft.TextThemeStyle.BODY_LARGE, text_align=ft.TextAlign.CENTER,
-        ))
-        self.content = ft.SafeArea(
-            content=ft.Column(
-                controls=[
-                    medication_photo(photo, height=180, aspect_ratio=4 / 3, fit=ft.BoxFit.COVER),
-                    ft.Column(
-                        controls=controls,
-                        spacing=SECTION_SPACING,
-                        horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
-                        tight=True,
-                    ),
-                    ft.Column(
-                        controls=[
-                            self._retry_button,
-                            self._retake_button,
-                            self._add_button,
-                        ],
-                        spacing=6,
-                        horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
-                        tight=True,
-                    ),
-                ],
-                spacing=SECTION_SPACING,
-                scroll=ft.ScrollMode.AUTO,
-                expand=True,
-                horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
-            )
-        )
+        if name:
+            controls.append(match_option(name, self._medication.strength, self._medication.form, selected=True))
+        self.content = result_layout(controls, [button for button in (
+            self._retry_button, self._retake_button, self._add_button,
+        ) if button.visible])
 
     async def _retry(self, event: ft.Event) -> None:
         if self._busy or not self._retry_button.visible:

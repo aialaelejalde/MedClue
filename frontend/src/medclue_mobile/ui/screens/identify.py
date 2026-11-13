@@ -6,7 +6,7 @@ import flet as ft
 
 from medclue_mobile.api_client import PhotoTooLargeError
 from medclue_mobile.photos import CameraPermissionError, PhotoManager
-from medclue_mobile.ui.components import soft_card
+from medclue_mobile.ui.components import action_button, soft_card
 from medclue_mobile.ui.dialogs import show_error, show_photo_too_large
 from medclue_mobile.ui.theme import (
     ACCENT_COLOR,
@@ -82,26 +82,29 @@ class IdentifyScreen(ft.Container):
             margin=SECTION_SPACING,
             visible=False,
             ignore_interactions=True,
+            border=ft.Border.all(0.5, ACCENT_COLOR),
         )
-        camera_card = soft_card(
+        camera_card = ft.Container(
             ft.Stack(
                 controls=[photos.camera, self._guide, self._status_panel],
                 fit=ft.StackFit.EXPAND,
             ),
-            padding=0,
+            border_radius=16,
+            clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
         )
-        camera_card.height = 180
         camera_card.aspect_ratio = 4 / 3
         camera_card.on_size_change = self._resize_preview
-        self._identify_button = ft.FilledButton(
-            "Identify medication", on_click=self._identify, disabled=True, expand=True
-        )
+        self._identify_button = action_button("Identify medication", self._identify, icon=ft.Icons.CAMERA_ALT_OUTLINED, rounded=False)
+        self._identify_button.disabled = True
         self.content = ft.SafeArea(
             content=ft.Column(
                 controls=[
-                    ft.Text("Identify medication", theme_style=ft.TextThemeStyle.HEADLINE_LARGE),
                     ft.Column(
-                        controls=[camera_card, ft.Row(controls=[self._identify_button])],
+                        controls=[soft_card(ft.Column(
+                            controls=[camera_card, ft.Row(controls=[self._identify_button])],
+                            spacing=CONTENT_PADDING, tight=True,
+                            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+                        ))],
                         spacing=CARD_SPACING,
                         alignment=ft.MainAxisAlignment.CENTER,
                         horizontal_alignment=ft.CrossAxisAlignment.STRETCH,

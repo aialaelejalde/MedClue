@@ -15,7 +15,8 @@ from medclue_mobile.cabinet import MedicationCabinet
 from medclue_mobile.identification import IdentificationSession
 from medclue_mobile.medications import Medication
 from medclue_mobile.sqlite_repository import MedicationRepository
-from medclue_mobile.ui.screens import add, edit_medication, medication_details
+from medclue_mobile.ui.screens import add, edit_medication
+from medclue_mobile.ui import dialogs
 from medclue_mobile.ui.screens.add import AddMedicationScreen
 from medclue_mobile.ui.screens.edit_medication import EditMedicationScreen
 from medclue_mobile.ui.screens.home import HomeScreen
@@ -25,6 +26,7 @@ from medclue_mobile.ui.screens.identifying_medication import IdentifyingMedicati
 from medclue_mobile.ui.screens.medication_details import MedicationDetailsScreen
 from medclue_mobile.ui.screens.possible_match_result import PossibleMatchResultScreen
 from medclue_mobile.ui.screens.possible_matches import PossibleMatchesScreen
+from medclue_mobile.ui.theme import BAR_HEIGHT, CARD_COLOR, BLUE_SURFACE, FONT_FAMILY
 
 
 VERIFIED_RESULT = {
@@ -40,7 +42,7 @@ def app_context(tmp_path, monkeypatch):
     page.views[0].confirm_pop = AsyncMock()
     monkeypatch.setattr(ft.Control, "page", property(lambda self: page))
 
-    saved = Medication(id=1, name="Saved medication")
+    saved = Medication(id=1, name="Saved medication", strength="500 mg", form="tablet")
     cabinet = Mock(spec=MedicationCabinet)
     cabinet.list_medications.return_value = [saved]
     cabinet.get_medication.return_value = saved
@@ -65,9 +67,9 @@ def app_context(tmp_path, monkeypatch):
     error = AsyncMock(return_value=False)
     monkeypatch.setattr(add, "confirm_discard_changes", discard)
     monkeypatch.setattr(edit_medication, "confirm_discard_changes", discard)
-    monkeypatch.setattr(medication_details, "confirm_delete_medication", delete)
+    monkeypatch.setattr(dialogs, "confirm_delete_medication", delete)
     monkeypatch.setattr(app_module, "confirm_leave_identification", leave)
-    for module in (app_module, add, edit_medication, medication_details):
+    for module in (app_module, add, edit_medication, dialogs):
         monkeypatch.setattr(module, "show_error", error)
 
     app = MedClueApp(page, "https://backend.example.invalid", database_path=tmp_path / "medclue.db")
@@ -119,6 +121,9 @@ def test_app_starts_on_home(app_context):
         assert chips._row.controls[-1].tooltip == "\n".join(uses[1:])
         assert [item.label for item in app_context.app._navigation.destinations] == ["Home", "Identify", "Add"]
         app_context.session.identify.assert_not_awaited()
+        assert card.content.controls[1].content.controls[1].value == "500 mg · tablet"
+        assert app_context.app._screen._count.value == "1 medications"
+        assert app_context.app._screen.sort_dropdown.options[0].style.bgcolor == BLUE_SURFACE
     asyncio.run(run())
 
 
@@ -177,15 +182,20 @@ def test_photo_dialog_fills_its_frame_without_distorting_the_camera(app_context,
     asyncio.run(run())
 
 
-def test_navigation_only_keeps_floating_actions_on_details_and_edit(app_context):
+def test_navigation_keeps_shared_bars_and_inline_actions(app_context):
     async def run():
         app = app_context.app
         await app.start()
         assert app._view.floating_action_button is None
         await app._open_details(1)
-        assert app._view.floating_action_button is app._screen._edit_button
+        assert app._view.floating_action_button is None
+        assert app._screen._edit_button.content == "Edit medication"
+        assert app._view.appbar.toolbar_height == app._navigation.height == BAR_HEIGHT
+        assert app._view.appbar.bgcolor == app._navigation.bgcolor == CARD_COLOR
+        assert app_context.page.fonts == {FONT_FAMILY: "fonts/PlusJakartaSans.ttf"}
         await app._open_edit(1)
-        assert app._view.floating_action_button is app._screen._save_button
+        assert app._view.floating_action_button is None
+        assert app._screen._save_button.content == "Save medication"
         await app._open_add()
         assert app._view.floating_action_button is None
 
@@ -200,9 +210,20 @@ def test_open_medication_edit_and_return_to_details(app_context):
         assert_screen(app, MedicationDetailsScreen, 0)
         await app._screen._edit_button.on_click(None)
         assert_screen(app, EditMedicationScreen, 0)
+        assert app._screen.form.get_medication().strength == "500 mg"
+        assert app._screen.form.get_medication().form == "tablet"
         await press_back(app)
         assert_screen(app, MedicationDetailsScreen, 0)
         assert app._screen._medication.id == app_context.saved.id
+        await press_back(app)
+        card = app._screen._medication_list.controls[0]
+        menu = card.content.controls[2].content
+        await menu.items[0].on_click(None)
+        assert_screen(app, MedicationDetailsScreen, 0)
+        await press_back(app)
+        menu = app._screen._medication_list.controls[0].content.controls[2].content
+        await menu.items[1].on_click(None)
+        assert_screen(app, EditMedicationScreen, 0)
         app_context.discard.assert_not_awaited()
     asyncio.run(run())
 
@@ -323,8 +344,10 @@ def test_empty_cabinet_buttons_open_the_corresponding_section(app_context, butto
     async def run():
         app_context.cabinet.list_medications.return_value = []
         await app_context.app.start()
-        actions = app_context.app._screen._empty_state.controls[1].controls
-        await actions[button_index - 1].on_click(None)
+        screen = app_context.app._screen
+        assert screen._count.value == "0 medications"
+        actions = screen._empty_state.content.controls
+        await actions[4 if tab == 1 else 3].controls[0].on_click(None)
         assert_screen(app_context.app, screen_type, tab)
     asyncio.run(run())
 
@@ -368,28 +391,25 @@ def test_identification_result_opens_correct_screen_and_back_returns_to_camera(a
         await app._screen._on_identify(b"captured photo", "image/jpeg")
         assert_screen(app, screen_type, 1)
         if isinstance(app._screen, PossibleMatchResultScreen):
-            layout = app._screen.content.content
-            assert layout.scroll == ft.ScrollMode.AUTO
-            assert layout.spacing == 24
-            assert layout.controls[0].aspect_ratio == 4 / 3
-            assert not layout.controls[1].scroll and not layout.controls[1].expand
-            assert layout.controls[-1].controls == [
+            card = app._screen.content.content
+            assert card.bgcolor == CARD_COLOR
+            information, actions = card.content.controls
+            assert isinstance(information, ft.ListView) and information.expand
+            assert [row.controls[0] for row in actions.controls] == [button for button in (
                 app._screen._retry_button, app._screen._retake_button, app._screen._add_button,
-            ]
-            content = layout.controls[1].controls
-            if result["status"] != "not_identified":
-                expected_icon = ft.Icons.ERROR_OUTLINE if result["status"] == "no_match" else ft.Icons.WARNING_AMBER_ROUNDED
-                assert content[0].controls[0].icon == expected_icon
-                assert content[0].controls[0].size == 30
-                assert content[0].horizontal_alignment == ft.CrossAxisAlignment.CENTER
+            ) if button.visible]
+            content = information.controls
+            assert content[0].controls[0].aspect_ratio == 4 / 3
+            badge = content[0].controls[1].content.controls[1]
+            assert badge.value == ("Possible match" if result.get("suggested_candidate") else "Not identified")
             if result.get("suggested_candidate"):
                 candidate = result["suggested_candidate"]
-                details = content[-2].content.controls
+                details = content[-1].content.controls[0].controls
                 assert details[0].value == candidate["name"]
                 expected_description = " · ".join(candidate[field] for field in ("strength", "form") if candidate.get(field))
-                assert [text.value for text in details[1:]] == ([expected_description] if expected_description else [])
-                assert all(text.text_align == ft.TextAlign.CENTER and text.max_lines is None for text in details)
-            assert content[-1].text_align == ft.TextAlign.CENTER
+                assert details[1].value == expected_description
+                assert content[-1].bgcolor == BLUE_SURFACE
+            assert content[2].max_lines is None
         app_context.error.assert_not_awaited()
         await press_back(app)
         assert_screen(app, IdentifyScreen, 1)
@@ -417,11 +437,14 @@ def test_verified_save_button_opens_add_instead_of_saving_automatically(app_cont
     async def run():
         app = app_context.app
         official_uses = ["A long official indication (with restrictions and conditions). " * 8, "Another use", "Unselected use"]
-        app_context.session.identify.return_value = {**VERIFIED_RESULT, "official_uses": official_uses}
+        app_context.session.identify.return_value = {
+            **VERIFIED_RESULT, "official_uses": official_uses,
+            "medication": {"name": "Confirmed medication", "strength": "500 mg", "form": "tablet"},
+        }
         await app.start()
         await select_tab(app, 1)
         await app._screen._on_identify(b"captured photo", "image/jpeg")
-        chips = app._screen.content.content.controls[0].controls[-1].content.controls[1]
+        chips = app._screen.content.content.content.controls[0].controls[-1]
         assert chips.wrap and len(chips.controls) == len(official_uses)
         assert [chip.content.value for chip in chips.controls] == official_uses
         assert all(chip.content.max_lines is None and chip.content.overflow is None for chip in chips.controls)
@@ -429,6 +452,8 @@ def test_verified_save_button_opens_add_instead_of_saving_automatically(app_cont
         assert_screen(app, AddMedicationScreen, 2)
         form = app._screen.form
         assert form.name_field.value == "Confirmed medication"
+        assert form.get_medication().strength == "500 mg"
+        assert form.get_medication().form == "tablet"
         assert not any(option.value for option in form._use_options)
         assert form.get_medication().uses == []
         assert not form.has_changes()
@@ -444,15 +469,17 @@ def test_verified_save_button_opens_add_instead_of_saving_automatically(app_cont
         options.on_size_change(SimpleNamespace(width=280, height=480))
         assert use_list.height == 240
         rows = options.controls
-        assert [row.content.controls[1].value for row in rows] == official_uses
-        assert all(row.content.controls[1].expand and row.content.controls[1].max_lines is None for row in rows)
+        assert [row.content.content.value for row in rows] == official_uses
+        assert all(row.content.content.max_lines is None for row in rows)
         rows[0].on_click(None)
         rows[1].on_click(None)
         assert form.get_medication().uses == official_uses[:2]
         assert form._use_summary.value == "2 selected"
+        assert rows[0].bgcolor == BLUE_SURFACE and rows[0].content.selected
         rows[0].on_click(None)
         assert form.get_medication().uses == [official_uses[1]]
         assert form._use_summary.value == "1 selected"
+        assert rows[0].bgcolor == CARD_COLOR and not rows[0].content.selected
         rows[0].on_click(None)
         selector.expanded = True
         selector.expanded = False
@@ -556,10 +583,10 @@ def test_selecting_candidate_checks_its_index_and_opens_the_result(app_context):
         await select_tab(app, 1)
         await app._screen._on_identify(b"captured photo", "image/jpeg")
         assert_screen(app, PossibleMatchesScreen, 1)
-        actions = app._screen.content.content.controls[-1]
+        actions = app._screen.content.content.content.controls[-1]
         assert isinstance(actions, ft.Column)
-        assert actions.controls == [app._screen._retake_button, app._screen._add_button]
-        assert actions.horizontal_alignment == ft.CrossAxisAlignment.START
+        assert [row.controls[0] for row in actions.controls] == [app._screen._retake_button, app._screen._add_button]
+        assert actions.horizontal_alignment == ft.CrossAxisAlignment.STRETCH
         await app._screen._match_list.controls[1].on_click(None)
         app_context.session.select_match.assert_awaited_once_with(1)
         assert_screen(app, IdentificationResultScreen, 1)
@@ -582,8 +609,8 @@ def test_try_again_retries_the_session_and_opens_the_result(app_context):
         await select_tab(app, 1)
         await app._screen._on_identify(b"captured photo", "image/jpeg")
         assert_screen(app, PossibleMatchResultScreen, 1)
-        content = app._screen.content.content.controls[1].controls
-        assert content[-2].content.controls[1].value == "100 mg"
+        content = app._screen.content.content.content.controls[0].controls
+        assert content[-1].content.controls[0].controls[1].value == "100 mg"
         await app._screen._retry_button.on_click(None)
         app_context.session.retry.assert_awaited_once_with()
         assert_screen(app, IdentificationResultScreen, 1)
@@ -602,8 +629,8 @@ def test_manual_entry_from_unconfirmed_result_keeps_photo_and_editable_suggested
         await select_tab(app, 1)
         await app._screen._on_identify(b"captured photo", "image/jpeg")
         assert_screen(app, PossibleMatchResultScreen, 1)
-        content = app._screen.content.content.controls[1].controls
-        assert len(content[-2].content.controls) == 1
+        content = app._screen.content.content.content.controls[0].controls
+        assert not content[-1].content.controls[0].controls[1].visible
         await app._screen._add_button.on_click(None)
         assert_screen(app, AddMedicationScreen, 2)
         form = app._screen.form

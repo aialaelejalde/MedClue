@@ -8,11 +8,13 @@ from medclue_mobile.ui.theme import (
     CARD_COLOR,
     CARD_RADIUS,
     CARD_SPACING,
-    ACCENT_COLOR,
     CONTENT_PADDING,
     ICON_SIZE,
     PRIMARY_COLOR,
     TEXT_COLOR,
+    BACKGROUND_COLOR, BLUE_BORDER, BLUE_SURFACE, LAVENDER_SURFACE, LAVENDER_TEXT,
+    SECONDARY_TEXT_COLOR, SUCCESS_COLOR, SUCCESS_SURFACE, WARNING_COLOR,
+    WARNING_SURFACE, DANGER_COLOR, DANGER_SURFACE, MIN_TOUCH_TARGET_SIZE, action_style,
 )
 
 
@@ -42,7 +44,7 @@ def soft_card(
 def soft_section(title: str, controls: list[ft.Control], *, spacing: int = CARD_SPACING) -> ft.Container:
     return soft_card(
         ft.Column(
-            controls=[ft.Text(title, theme_style=ft.TextThemeStyle.TITLE_LARGE), *controls],
+            controls=[ft.Text(title.upper(), size=12, color=SECONDARY_TEXT_COLOR, weight=ft.FontWeight.W_600), *controls],
             spacing=spacing,
             tight=True,
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
@@ -63,21 +65,22 @@ def medication_name(
         max_lines=max_lines,
         overflow=ft.TextOverflow.ELLIPSIS if max_lines is not None else None,
         text_align=text_align,
+        weight=ft.FontWeight.W_700,
     )
 
 
 def _use_chip(use: str, *, full_text: bool = False, display_text: str | None = None) -> ft.Container:
     return ft.Container(
         content=ft.Text(
-            use if display_text is None else display_text, color=TEXT_COLOR,
+            use if display_text is None else display_text, color=LAVENDER_TEXT,
             max_lines=None if full_text else 1,
             overflow=None if full_text else ft.TextOverflow.ELLIPSIS,
             theme_style=ft.TextThemeStyle.BODY_MEDIUM,
         ),
         padding=ft.Padding.symmetric(horizontal=12, vertical=8),
-        border=ft.Border.all(1, ACCENT_COLOR),
+        border=ft.Border.all(0, ft.Colors.TRANSPARENT),
         border_radius=24,
-        bgcolor=CARD_COLOR,
+        bgcolor=LAVENDER_SURFACE,
         tooltip=use,
     )
 
@@ -194,19 +197,6 @@ def _home_use_label(use: str) -> str:
         label = simplified
 
 
-def floating_action_spacer(button: ft.FloatingActionButton, *, spacing: int) -> ft.Container:
-    """Reserve the button's measured height without adding another full gap."""
-    spacer = ft.Container(height=0)
-
-    def resized(event: ft.LayoutSizeChangeEvent) -> None:
-        spacer.height = max(0, event.height - spacing)
-        if spacer.parent is not None:
-            spacer.update()
-
-    button.on_size_change = resized
-    return spacer
-
-
 def medication_photo(
     photo: bytes | None,
     *,
@@ -240,7 +230,97 @@ def medication_photo(
         height=height,
         aspect_ratio=aspect_ratio,
         alignment=ft.Alignment.CENTER,
-        bgcolor=CARD_COLOR,
+        bgcolor=BACKGROUND_COLOR,
         border_radius=CARD_RADIUS,
         clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+    )
+
+
+def action_button(
+    label: str,
+    on_click: ft.ControlEventHandler[ft.FilledButton],
+    *,
+    icon: ft.IconData | None = None,
+    kind: str = "primary",
+    rounded: bool = True,
+) -> ft.FilledButton:
+    return ft.FilledButton(
+        label, icon=ft.Icon(icon, size=20) if icon else None, on_click=on_click,
+        style=action_style(kind, rounded=rounded), elevation=0,
+        expand=True, height=MIN_TOUCH_TARGET_SIZE,
+    )
+
+
+def medication_subtitle(strength: str | None, form: str | None) -> ft.Text:
+    return ft.Text(
+        " · ".join(value.strip() for value in (strength, form) if value and value.strip()),
+        theme_style=ft.TextThemeStyle.BODY_MEDIUM,
+        visible=bool(strength or form),
+    )
+
+
+def status_photo(photo: bytes | None, status: str, label: str) -> ft.Stack:
+    color, surface, icon = {
+        "verified": (SUCCESS_COLOR, SUCCESS_SURFACE, ft.Icons.CHECK_CIRCLE_OUTLINE),
+        "possible": (WARNING_COLOR, WARNING_SURFACE, ft.Icons.WARNING_AMBER_ROUNDED),
+        "unidentified": (DANGER_COLOR, DANGER_SURFACE, ft.Icons.CANCEL_OUTLINED),
+    }[status]
+    badge = ft.Container(
+        content=ft.Row([
+            ft.Icon(icon, color=color, size=18),
+            ft.Text(label, color=color, size=12, weight=ft.FontWeight.W_600),
+        ], spacing=6, tight=True),
+        bgcolor=surface, border_radius=24, padding=ft.Padding.symmetric(horizontal=12, vertical=8),
+        left=12, bottom=12,
+    )
+    return ft.Stack([
+        medication_photo(photo, height=180, aspect_ratio=4 / 3, fit=ft.BoxFit.COVER), badge,
+    ])
+
+
+def result_layout(controls: list[ft.Control], actions: list[ft.Control]) -> ft.SafeArea:
+    """One white result card with scrollable information and accessible bottom actions."""
+    card = soft_card(ft.Column([
+        ft.ListView(controls=controls, spacing=CARD_SPACING, expand=True),
+        ft.Column([ft.Row([action]) for action in actions], spacing=8,
+                  horizontal_alignment=ft.CrossAxisAlignment.STRETCH, tight=True),
+    ], spacing=CONTENT_PADDING, expand=True, horizontal_alignment=ft.CrossAxisAlignment.STRETCH))
+    card.expand = True
+    return ft.SafeArea(content=card, expand=True)
+
+
+def match_option(
+    name: str,
+    strength: str | None,
+    form: str | None,
+    *,
+    selected: bool = False,
+    on_click: ft.ControlEventHandler[ft.Container] | None = None,
+) -> ft.Container:
+    return ft.Container(
+        content=ft.Row([
+            ft.Column([medication_name(name), medication_subtitle(strength, form)],
+                      spacing=4, tight=True, expand=True),
+            ft.Container(
+                content=ft.Icon(ft.Icons.CHECK, color=CARD_COLOR, size=16) if selected else None,
+                width=24, height=24, border_radius=12,
+                border=ft.Border.all(1, PRIMARY_COLOR if selected else BLUE_BORDER),
+                bgcolor=PRIMARY_COLOR if selected else CARD_COLOR,
+                alignment=ft.Alignment.CENTER,
+            ),
+        ], spacing=CARD_SPACING),
+        padding=CONTENT_PADDING, border_radius=12,
+        bgcolor=BLUE_SURFACE if selected else CARD_COLOR,
+        border=ft.Border.all(2 if selected else 1, PRIMARY_COLOR if selected else BLUE_BORDER),
+        on_click=on_click, ink=on_click is not None,
+    )
+
+
+def information_row(label: str, value: str) -> ft.Container:
+    return ft.Container(
+        content=ft.Row([
+            ft.Text(label, theme_style=ft.TextThemeStyle.BODY_MEDIUM, expand=True),
+            ft.Text(value, color=TEXT_COLOR, weight=ft.FontWeight.W_700, expand=2, text_align=ft.TextAlign.RIGHT),
+        ], spacing=CARD_SPACING),
+        padding=CONTENT_PADDING, bgcolor=BACKGROUND_COLOR, border_radius=12,
     )

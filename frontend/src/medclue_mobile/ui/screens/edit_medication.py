@@ -10,10 +10,10 @@ import flet as ft
 from medclue_mobile.cabinet import DuplicateMedicationError, MedicationCabinet
 from medclue_mobile.medications import Medication, validate_medication
 from medclue_mobile.photos import CameraPermissionError, compress_photo
-from medclue_mobile.ui.components import floating_action_spacer
+from medclue_mobile.ui.components import action_button
 from medclue_mobile.ui.dialogs import (confirm_discard_changes, confirm_duplicate, show_error, show_save_success)
-from medclue_mobile.ui.medication_form import MedicationForm
-from medclue_mobile.ui.theme import CARD_SPACING, SCREEN_MARGIN, SECTION_SPACING
+from medclue_mobile.ui.medication_form import MedicationForm, form_screen_layout
+from medclue_mobile.ui.theme import SCREEN_MARGIN
 
 
 class EditMedicationScreen(ft.Container):
@@ -40,24 +40,8 @@ class EditMedicationScreen(ft.Container):
             medication,
             on_take_photo=self._take_photo if on_take_photo is not None else None,
         )
-        self._save_button = ft.FloatingActionButton(
-            icon=ft.Icons.SAVE,
-            tooltip="Save medication",
-            shape=ft.CircleBorder(),
-            on_click=self._save,
-        )
-        self.content = ft.SafeArea(
-            content=ft.Column(
-                controls=[
-                    ft.Text("Edit medication", theme_style=ft.TextThemeStyle.HEADLINE_LARGE),
-                    self.form,
-                ],
-                spacing=CARD_SPACING,
-                expand=True,
-                horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
-            )
-        )
-        self.form.controls.append(floating_action_spacer(self._save_button, spacing=SECTION_SPACING))
+        self._save_button = action_button("Save medication", self._save)
+        self.content = form_screen_layout("Edit medication", self.form, self._save_button)
 
     async def can_leave(self) -> bool:
         if self._saved_medication is not None:

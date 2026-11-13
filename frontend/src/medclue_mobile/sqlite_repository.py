@@ -32,6 +32,8 @@ class MedicationRepository:
                     CREATE TABLE IF NOT EXISTS medications (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         name TEXT,
+                        strength TEXT,
+                        form TEXT,
                         photo BLOB,
                         uses TEXT,
                         amount TEXT,
@@ -44,6 +46,12 @@ class MedicationRepository:
                     )
                     """
                 )
+
+                # Older installations keep their records when the app is updated.
+                columns = {row["name"] for row in connection.execute("PRAGMA table_info(medications)")}
+                for column in ("strength", "form"):
+                    if column not in columns:
+                        connection.execute(f"ALTER TABLE medications ADD COLUMN {column} TEXT")
 
     def add(self, medication: Medication) -> Medication:
         """Return the saved record."""
@@ -59,10 +67,10 @@ class MedicationRepository:
                 cursor = connection.execute(
                     """
                     INSERT INTO medications (
-                        name, photo, uses, amount, frequency, food,
+                        name, strength, form, photo, uses, amount, frequency, food,
                         prescription_date, treatment_end, notes, created_at
                     ) VALUES (
-                        :name, :photo, :uses, :amount, :frequency, :food,
+                        :name, :strength, :form, :photo, :uses, :amount, :frequency, :food,
                         :prescription_date, :treatment_end, :notes, :created_at
                     )
                     """,
@@ -100,6 +108,8 @@ class MedicationRepository:
                     """
                     UPDATE medications SET
                         name = :name,
+                        strength = :strength,
+                        form = :form,
                         photo = :photo,
                         uses = :uses,
                         amount = :amount,
@@ -141,6 +151,8 @@ def _validate_record_id(medication_id: int | None) -> None:
 def _medication_values(medication: Medication) -> dict:
     return {
         "name": medication.name,
+        "strength": medication.strength,
+        "form": medication.form,
         "photo": medication.photo,
         "uses": json.dumps(medication.uses, ensure_ascii=False),
         "amount": _option_json(medication.amount),
@@ -190,6 +202,8 @@ def _medication_from_row(row: sqlite3.Row) -> Medication:
         medication = Medication(
             id=row["id"],
             name=row["name"],
+            strength=row["strength"],
+            form=row["form"],
             photo=row["photo"],
             uses=json.loads(row["uses"]) if row["uses"] is not None else [],
             amount=amount,

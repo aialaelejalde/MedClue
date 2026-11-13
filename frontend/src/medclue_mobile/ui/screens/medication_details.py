@@ -1,6 +1,5 @@
 """Show a saved medication and its available actions."""
 
-import sqlite3
 from collections.abc import Awaitable, Callable
 from copy import deepcopy
 
@@ -8,10 +7,10 @@ import flet as ft
 
 from medclue_mobile.cabinet import MedicationCabinet
 from medclue_mobile.medications import Medication, validate_medication
-from medclue_mobile.ui.components import floating_action_spacer, medication_name, medication_photo, soft_section, use_chips
-from medclue_mobile.ui.dialogs import confirm_delete_medication, show_error
+from medclue_mobile.ui.components import action_button, information_row, medication_name, medication_photo, medication_subtitle, soft_card, soft_section, use_chips
+from medclue_mobile.ui.dialogs import delete_medication_with_confirmation
 from medclue_mobile.ui.medication_form import (AMOUNT_UNIT_LABELS, FOOD_LABELS, FREQUENCY_LABELS, TREATMENT_END_LABELS)
-from medclue_mobile.ui.theme import CARD_SPACING, SCREEN_MARGIN
+from medclue_mobile.ui.theme import BACKGROUND_COLOR, CARD_SPACING, CONTENT_PADDING, SCREEN_MARGIN
 
 
 class MedicationDetailsScreen(ft.Container):
@@ -33,20 +32,14 @@ class MedicationDetailsScreen(ft.Container):
         self._on_deleted = on_deleted
         self._busy = False
         self._deleted = False
-        self._edit_button = ft.FloatingActionButton(
-            icon=ft.Icons.EDIT,
-            tooltip="Edit medication",
-            shape=ft.CircleBorder(),
-            on_click=self._edit,
-        )
-        self._delete_button = ft.OutlinedButton("Delete medication", on_click=self._delete)
+        self._edit_button = action_button("Edit medication", self._edit, icon=ft.Icons.EDIT_OUTLINED)
+        self._delete_button = action_button("Delete medication", self._delete, icon=ft.Icons.DELETE_OUTLINE, kind="danger")
         self.content = ft.SafeArea(
             content=ft.Column(
                 controls=[
                     ft.ListView(
                         controls=[
-                            *self._saved_information(), self._delete_button,
-                            floating_action_spacer(self._edit_button, spacing=CARD_SPACING),
+                            *self._saved_information(), ft.Row([self._edit_button]), ft.Row([self._delete_button]),
                         ],
                         spacing=CARD_SPACING,
                         expand=True,
@@ -60,20 +53,22 @@ class MedicationDetailsScreen(ft.Container):
 
     def _saved_information(self) -> list[ft.Control]:
         medication = self._medication
-        controls = [
-            medication_name(medication.name, theme_style=ft.TextThemeStyle.HEADLINE_LARGE),
+        controls = [soft_card(ft.Column([
             medication_photo(medication.photo, height=180, aspect_ratio=4 / 3, fit=ft.BoxFit.COVER),
-        ]
+            medication_name(medication.name, theme_style=ft.TextThemeStyle.TITLE_LARGE),
+            medication_subtitle(medication.strength, medication.form),
+        ], spacing=CARD_SPACING, tight=True, horizontal_alignment=ft.CrossAxisAlignment.STRETCH))]
         if medication.uses:
             controls.append(soft_section("Prescribed for", [use_chips(medication.uses, full_text=True)]))
 
+        instructions = []
         if medication.amount is not None:
             amount = medication.amount
             text = amount.text
             if amount.type == "quantity":
                 quantity = str(amount.value).removesuffix(".0")
                 text = f"{quantity} {AMOUNT_UNIT_LABELS[amount.unit]}"
-            controls.append(soft_section("Amount to take", [ft.Text(text)]))
+            instructions.append(information_row("Amount", text))
 
         if medication.frequency is not None:
             frequency = medication.frequency
@@ -85,15 +80,19 @@ class MedicationDetailsScreen(ft.Container):
                 text = frequency.text
             else:
                 text = FREQUENCY_LABELS[frequency.type]
-            controls.append(soft_section("Frequency", [ft.Text(text)]))
+            instructions.append(information_row("Frequency", text))
 
         if medication.food is not None:
             food = medication.food
             text = food.text if food.type == "custom" else FOOD_LABELS[food.type]
-            controls.append(soft_section("Food instructions", [ft.Text(text)]))
+            instructions.append(information_row("Meal intake", text))
 
+        if instructions:
+            controls.append(soft_section("My instructions", instructions))
+
+        dates = []
         if medication.prescription_date is not None:
-            controls.append(soft_section("Prescription date", [ft.Text(medication.prescription_date.isoformat())]))
+            dates.append(information_row("Prescribed on", medication.prescription_date.isoformat()))
 
         if medication.treatment_end is not None:
             treatment_end = medication.treatment_end
@@ -101,10 +100,15 @@ class MedicationDetailsScreen(ft.Container):
                 treatment_end.end_date.isoformat()
                 if treatment_end.type == "date" else TREATMENT_END_LABELS[treatment_end.type]
             )
-            controls.append(soft_section("End of treatment", [ft.Text(text)]))
+            dates.append(information_row("End date", text))
 
         if medication.notes and medication.notes.strip():
-            controls.append(soft_section("Additional notes", [ft.Text(medication.notes)]))
+            dates.extend([
+                ft.Text("Notes", theme_style=ft.TextThemeStyle.BODY_MEDIUM),
+                ft.Container(content=ft.Text(medication.notes), bgcolor=BACKGROUND_COLOR, padding=CONTENT_PADDING, border_radius=12),
+            ])
+        if dates:
+            controls.append(soft_section("Dates & notes", dates))
         return controls
 
     async def _edit(self, event: ft.Event) -> None:
@@ -121,21 +125,10 @@ class MedicationDetailsScreen(ft.Container):
             return
         self._set_busy(True)
         try:
-            if not await confirm_delete_medication(self.page):
+            if not await delete_medication_with_confirmation(
+                self.page, lambda: self._cabinet.delete_medication(self._medication.id),
+            ):
                 return
-            while True:
-                try:
-                    self._cabinet.delete_medication(self._medication.id)
-                    break
-                except (sqlite3.Error, OSError, ValueError, LookupError):
-                    retry = await show_error(
-                        self.page,
-                        "Cannot delete medication",
-                        "We couldn't delete this medication. Please try again.",
-                        action_text="Try again",
-                    )
-                    if not retry:
-                        return
 
             self._deleted = True
             await self._on_deleted()

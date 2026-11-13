@@ -24,7 +24,7 @@ from medclue_mobile.ui.screens.identifying_medication import IdentifyingMedicati
 from medclue_mobile.ui.screens.medication_details import MedicationDetailsScreen
 from medclue_mobile.ui.screens.possible_match_result import PossibleMatchResultScreen
 from medclue_mobile.ui.screens.possible_matches import PossibleMatchesScreen
-from medclue_mobile.ui.theme import BACKGROUND_COLOR, CARD_SPACING, FONT_FAMILY, create_theme
+from medclue_mobile.ui.theme import BACKGROUND_COLOR, CARD_COLOR, CARD_SPACING, FONT_FAMILY, BAR_HEIGHT, PRIMARY_COLOR, TEXT_COLOR, create_theme
 
 
 DEFAULT_BACKEND_URL = "https://medclue-api-377942439711.europe-southwest1.run.app"
@@ -47,21 +47,36 @@ class MedClueApp:
         self._photo_result: asyncio.Future | None = None
         self._navigation = ft.NavigationBar(
             destinations=[
-                ft.NavigationBarDestination(icon=ft.Icons.HOME_OUTLINED, label="Home"),
-                ft.NavigationBarDestination(icon=ft.Icons.CAMERA_ALT_OUTLINED, label="Identify"),
-                ft.NavigationBarDestination(icon=ft.Icons.ADD, label="Add"),
+                ft.NavigationBarDestination(icon=ft.Icon(ft.Icons.HOME_OUTLINED, color=PRIMARY_COLOR), selected_icon=ft.Icon(ft.Icons.HOME_OUTLINED, color=TEXT_COLOR), label="Home"),
+                ft.NavigationBarDestination(icon=ft.Icon(ft.Icons.CAMERA_ALT_OUTLINED, color=PRIMARY_COLOR), selected_icon=ft.Icon(ft.Icons.CAMERA_ALT_OUTLINED, color=TEXT_COLOR), label="Identify"),
+                ft.NavigationBarDestination(icon=ft.Icon(ft.Icons.ADD_CIRCLE_OUTLINE, color=PRIMARY_COLOR), selected_icon=ft.Icon(ft.Icons.ADD_CIRCLE_OUTLINE, color=TEXT_COLOR), label="Add"),
             ],
             selected_index=0,
             on_change=self._tab_changed,
+            height=BAR_HEIGHT,
+            bgcolor=CARD_COLOR,
+            indicator_color=ft.Colors.TRANSPARENT,
         )
         self._view = page.views[0] if page.views else ft.View()
         self._view.padding = 0
         self._view.bgcolor = BACKGROUND_COLOR
         self._view.on_confirm_pop = self._back
+        self._view.appbar = ft.AppBar(
+            title=ft.Container(
+                content=ft.Stack([
+                    ft.Image(src="medclue_logo.png", width=260, height=38, left=-40, top=0,
+                             fit=ft.BoxFit.COVER, semantics_label="MedClue"),
+                ], clip_behavior=ft.ClipBehavior.HARD_EDGE),
+                width=184, height=38,
+            ),
+            automatically_imply_leading=False, center_title=False,
+            toolbar_height=BAR_HEIGHT, bgcolor=CARD_COLOR, elevation=0, elevation_on_scroll=0,
+            title_spacing=16,
+        )
 
     async def start(self) -> None:
         self._page.title = "MedClue"
-        self._page.fonts = {FONT_FAMILY: "fonts/Inter.ttf"}
+        self._page.fonts = {FONT_FAMILY: "fonts/PlusJakartaSans.ttf"}
         self._page.theme = create_theme()
         self._page.bgcolor = BACKGROUND_COLOR
         self._page.theme_mode = ft.ThemeMode.LIGHT
@@ -100,20 +115,14 @@ class MedClueApp:
         self._tab = tab
         self._navigation.selected_index = tab
         self._view.navigation_bar = self._navigation
-        if isinstance(screen, MedicationDetailsScreen):
-            self._view.floating_action_button = screen._edit_button
-        elif isinstance(screen, EditMedicationScreen):
-            self._view.floating_action_button = screen._save_button
-        else:
-            self._view.floating_action_button = None
-        self._view.floating_action_button_location = ft.FloatingActionButtonLocation.END_FLOAT
+        self._view.floating_action_button = None
         self._view.can_pop = isinstance(screen, HomeScreen)
         self._view.controls = [screen]
         self._page.update()
 
     def _show_home(self) -> None:
         self._medication_id = None
-        self._show_screen(HomeScreen(self._cabinet, self._open_details, self._open_identify, self._open_add), 0)
+        self._show_screen(HomeScreen(self._cabinet, self._open_details, self._open_identify, self._open_add, self._open_edit), 0)
 
     async def _open_details(self, medication_id: int) -> None:
         try:
@@ -189,7 +198,7 @@ class MedClueApp:
                 return
             photo = self._session.photo
             if result["status"] == "verified":
-                screen = IdentificationResultScreen(result, photo, self._open_add)
+                screen = IdentificationResultScreen(result, photo, self._open_add, self._open_identify)
             elif result["status"] == "multiple_matches":
                 screen = PossibleMatchesScreen(result, photo, self._select_match, self._open_identify, self._open_add)
             else:

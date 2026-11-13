@@ -6,8 +6,8 @@ from copy import deepcopy
 import flet as ft
 
 from medclue_mobile.medications import Medication, validate_medication
-from medclue_mobile.ui.components import medication_name, medication_photo, soft_section, use_chips
-from medclue_mobile.ui.theme import CARD_SPACING, SCREEN_MARGIN, SECTION_SPACING
+from medclue_mobile.ui.components import action_button, medication_name, medication_subtitle, result_layout, status_photo, use_chips
+from medclue_mobile.ui.theme import SCREEN_MARGIN
 
 
 class IdentificationResultScreen(ft.Container):
@@ -16,6 +16,7 @@ class IdentificationResultScreen(ft.Container):
         result: dict,
         photo: bytes | None,
         on_save: Callable[[Medication, list[str]], Awaitable[None]],
+        on_identify: Callable[[], Awaitable[None]],
     ):
         super().__init__(expand=True, padding=SCREEN_MARGIN)
         if not isinstance(result, dict) or result.get("status") != "verified":
@@ -32,32 +33,33 @@ class IdentificationResultScreen(ft.Container):
         ):
             raise ValueError("Official uses must be a list of nonempty labels.")
 
-        self._medication = Medication(name=name.strip(), photo=photo)
+        self._medication = Medication(name=name.strip(), photo=photo, strength=medication.get("strength"), form=medication.get("form"))
         validate_medication(self._medication)
         self._official_uses = list(official_uses)
         self._on_save = on_save
+        self._on_identify = on_identify
         self._opening_form = False
-        self._save_button = ft.FilledButton(
-            "Save to My medications", on_click=self._save, expand=True
-        )
+        self._save_button = action_button("Save to my medications", self._save, icon=ft.Icons.ADD_CIRCLE_OUTLINE)
+        self._identify_button = action_button("Identify another medication", self._identify, icon=ft.Icons.CAMERA_ALT_OUTLINED, kind="secondary")
 
         controls = [
-            medication_photo(photo, height=180, aspect_ratio=4 / 3, fit=ft.BoxFit.COVER),
-            medication_name(name, theme_style=ft.TextThemeStyle.HEADLINE_LARGE),
+            status_photo(photo, "verified", "Identified"),
+            medication_name(name, theme_style=ft.TextThemeStyle.TITLE_LARGE),
+            medication_subtitle(self._medication.strength, self._medication.form),
         ]
         if self._official_uses:
-            controls.append(soft_section("What is it used for?", [use_chips(self._official_uses, full_text=True)]))
+            controls.extend([ft.Text("What is it used for?", theme_style=ft.TextThemeStyle.TITLE_MEDIUM), use_chips(self._official_uses, full_text=True)])
 
-        self.content = ft.SafeArea(
-            content=ft.Column(
-                controls=[
-                    ft.ListView(controls=controls, spacing=SECTION_SPACING, expand=True),
-                    ft.Row(controls=[self._save_button]),
-                ],
-                spacing=CARD_SPACING,
-                expand=True,
-            )
-        )
+        self.content = result_layout(controls, [self._save_button, self._identify_button])
+
+    async def _identify(self, event: ft.Event) -> None:
+        if self._opening_form:
+            return
+        self._set_opening_form(True)
+        try:
+            await self._on_identify()
+        finally:
+            self._set_opening_form(False)
 
     async def _save(self, event: ft.Event) -> None:
         """Open the Add medication form with the identified medication data."""
@@ -72,5 +74,6 @@ class IdentificationResultScreen(ft.Container):
     def _set_opening_form(self, opening: bool) -> None:
         self._opening_form = opening
         self._save_button.disabled = opening
+        self._identify_button.disabled = opening
         if self.parent is not None:
             self.update()

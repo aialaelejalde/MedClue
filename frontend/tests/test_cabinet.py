@@ -33,6 +33,8 @@ def test_new_cabinet_is_empty(cabinet):
 def test_save_keeps_all_fields_and_does_not_change_the_draft(cabinet):
     draft = Medication(
         name="Paracetamol",
+        strength="500 mg",
+        form="tablet",
         photo=b"compressed photo bytes",
         uses=["Pain", "My own reason"],
         amount=Amount("quantity", 0.5, "tablets"),
@@ -77,6 +79,10 @@ def test_optional_and_custom_fields_are_restored(cabinet, draft):
 
 def test_records_remain_after_reopening_and_initializing(cabinet, tmp_path):
     saved = cabinet.save_medication(Medication(name="Paracetamol", photo=b"photo"))
+    with closing(sqlite3.connect(tmp_path / "medclue.db")) as connection:
+        with connection:
+            connection.execute("ALTER TABLE medications DROP COLUMN strength")
+            connection.execute("ALTER TABLE medications DROP COLUMN form")
     reopened_repository = MedicationRepository(tmp_path / "medclue.db")
 
     reopened_repository.initialize()
@@ -84,6 +90,10 @@ def test_records_remain_after_reopening_and_initializing(cabinet, tmp_path):
 
     assert reopened_cabinet.get_medication(saved.id) == saved
     assert reopened_cabinet.list_medications() == [saved]
+    updated = reopened_cabinet.save_medication(replace(saved, strength="500 mg", form="tablet"))
+    reopened_repository.initialize()
+    assert reopened_cabinet.get_medication(saved.id) == updated
+    assert updated.created_at == saved.created_at
 
 
 def test_sqlite_stores_photos_as_blobs_and_options_as_json(cabinet, tmp_path):
