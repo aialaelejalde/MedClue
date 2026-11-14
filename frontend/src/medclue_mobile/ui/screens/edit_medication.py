@@ -25,7 +25,7 @@ class EditMedicationScreen(ft.Container):
         *,
         on_take_photo: Callable[[], Awaitable[bytes | None]] | None = None,
     ):
-        super().__init__(expand=True, padding=SCREEN_MARGIN)
+        super().__init__(expand=True, padding=ft.Padding.symmetric(horizontal=SCREEN_MARGIN))
         validate_medication(medication)
         if medication.id is None:
             raise ValueError("Editing a medication requires a saved record.")
@@ -41,7 +41,7 @@ class EditMedicationScreen(ft.Container):
             on_take_photo=self._take_photo if on_take_photo is not None else None,
         )
         self._save_button = action_button("Save medication", self._save)
-        self.content = form_screen_layout("Edit medication", self.form, self._save_button)
+        self.content = form_screen_layout(None, self.form, self._save_button)
 
     async def can_leave(self) -> bool:
         if self._saved_medication is not None:

@@ -6,7 +6,8 @@ from collections.abc import Callable
 
 import flet as ft
 
-from medclue_mobile.ui.theme import ACCENT_COLOR, CARD_COLOR, CARD_RADIUS, CARD_SPACING
+from medclue_mobile.ui.components import retry_icon
+from medclue_mobile.ui.theme import CARD_COLOR, CARD_RADIUS, CARD_SPACING, SUCCESS_COLOR, SUCCESS_SURFACE
 
 
 async def confirm_duplicate(page: ft.Page) -> bool:
@@ -97,8 +98,11 @@ async def show_photo_too_large(page: ft.Page) -> bool:
 
 def show_save_success(page: ft.Page) -> None:
     page.show_dialog(ft.SnackBar(
-        content=ft.Text("Medication saved successfully", color=CARD_COLOR),
-        bgcolor=ACCENT_COLOR,
+        content=ft.Row([
+            ft.Icon(ft.Icons.CHECK_CIRCLE_OUTLINE, color=SUCCESS_COLOR),
+            ft.Text("Medication saved successfully", color=SUCCESS_COLOR, expand=True),
+        ]),
+        bgcolor=SUCCESS_SURFACE,
     ))
 
 
@@ -126,7 +130,10 @@ async def _show_dialog(
     actions = []
     if cancel_text is not None:
         actions.append(ft.TextButton(cancel_text, on_click=lambda: choose(False)))
-    actions.append(ft.TextButton(action_text, on_click=lambda: choose(True)))
+    actions.append(ft.TextButton(
+        action_text, on_click=lambda: choose(True),
+        icon=retry_icon() if action_text == "Try again" else (ft.Icons.SAVE_OUTLINED if action_text.startswith("Save") else None),
+    ))
 
     dialog = ft.AlertDialog(
         title=ft.Text(title, theme_style=ft.TextThemeStyle.TITLE_LARGE),

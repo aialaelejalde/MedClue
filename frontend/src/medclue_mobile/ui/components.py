@@ -1,8 +1,13 @@
 """Build small interface parts that several screens share."""
 
 import re
+import math
+from datetime import date
 
 import flet as ft
+import flet.canvas as cv
+from babel import UnknownLocaleError
+from babel.dates import format_date
 
 from medclue_mobile.ui.theme import (
     CARD_COLOR,
@@ -14,8 +19,65 @@ from medclue_mobile.ui.theme import (
     TEXT_COLOR,
     BACKGROUND_COLOR, BLUE_BORDER, BLUE_SURFACE, LAVENDER_SURFACE, LAVENDER_TEXT,
     SECONDARY_TEXT_COLOR, SUCCESS_COLOR, SUCCESS_SURFACE, WARNING_COLOR,
-    WARNING_SURFACE, DANGER_COLOR, DANGER_SURFACE, MIN_TOUCH_TARGET_SIZE, action_style,
+    WARNING_SURFACE, DANGER_COLOR, DANGER_SURFACE, action_style,
+    ACCENT_COLOR, FONT_FAMILY, INPUT_TEXT_SIZE, SECTION_SPACING, SCREEN_MARGIN,
 )
+
+
+@ft.control("TextField")
+class _DismissibleTextField(ft.TextField):
+    # Flet's Flutter TextField supports a changing blur token, but the Python
+    # TextField does not expose it yet. Declare it so it is serialized normally.
+    blur: str = "0"
+
+
+def text_field(**kwargs) -> ft.TextField:
+    field = _DismissibleTextField(
+        text_size=INPUT_TEXT_SIZE, color=TEXT_COLOR,
+        text_style=ft.TextStyle(size=INPUT_TEXT_SIZE, color=TEXT_COLOR, font_family=FONT_FAMILY),
+        label_style=ft.TextStyle(size=INPUT_TEXT_SIZE, color=PRIMARY_COLOR, font_family=FONT_FAMILY),
+        hint_style=ft.TextStyle(size=INPUT_TEXT_SIZE, color=PRIMARY_COLOR, font_family=FONT_FAMILY),
+        **kwargs,
+    )
+
+    def dismiss_keyboard(event: ft.Event) -> None:
+        field.blur = str(int(field.blur) + 1)
+        if field.parent is not None:
+            field.update()
+
+    field.on_tap_outside = dismiss_keyboard
+    return field
+
+
+def camera_guide(*, visible: bool = True) -> ft.Container:
+    def corner(*, flip_x: bool = False, flip_y: bool = False, **position) -> cv.Canvas:
+        def point(x: float, y: float) -> tuple[float, float]:
+            return (24 - x if flip_x else x, 24 - y if flip_y else y)
+
+        return cv.Canvas(
+            shapes=[cv.Path(
+                elements=[
+                    cv.Path.MoveTo(*point(1, 23)), cv.Path.LineTo(*point(1, 8)),
+                    cv.Path.QuadraticTo(*point(1, 1), *point(8, 1), w=math.sqrt(0.5)),
+                    cv.Path.LineTo(*point(23, 1)),
+                ],
+                paint=ft.Paint(color=ACCENT_COLOR, stroke_width=2,
+                               style=ft.PaintingStyle.STROKE,
+                               stroke_cap=ft.StrokeCap.ROUND, stroke_join=ft.StrokeJoin.ROUND),
+            )],
+            width=24, height=24, **position,
+        )
+
+    return ft.Container(
+        content=ft.Stack([
+            corner(top=0, left=0),
+            corner(flip_x=True, top=0, right=0),
+            corner(flip_y=True, bottom=0, left=0),
+            corner(flip_x=True, flip_y=True, bottom=0, right=0),
+        ]),
+        margin=SECTION_SPACING, visible=visible, ignore_interactions=True,
+        border=ft.Border.all(0.5, ACCENT_COLOR), border_radius=8,
+    )
 
 
 def soft_card(
@@ -97,8 +159,8 @@ def use_chips(uses: list[str], *, compact: bool = False, full_text: bool = False
     )
 
 
-class _CompactUseChips(ft.Stack):
-    """Measure natural widths offscreen, then fit one row with an overflow count."""
+class _CompactUseChips(ft.Container):
+    """Fit the actual chips into one row, reserving space for the overflow count."""
 
     def __init__(self, uses: list[str]):
         super().__init__(on_size_change=self._resized)
@@ -109,39 +171,28 @@ class _CompactUseChips(ft.Stack):
         self._available = 0.0
         self._layout = None
         self._chips = [_use_chip(uses[index], display_text=labels[index]) for index in self._indices]
-        self._row = ft.Row(spacing=CARD_SPACING, opacity=0)
-        measurements = []
-        for index, original_index in enumerate(self._indices):
-            label = labels[original_index]
-            chip = _use_chip(label)
-            chip.on_size_change = self._measure(f"use:{index}")
-            measurements.append(chip)
-            # Require a readable prefix as well as the ellipsis when truncating.
-            minimum = _use_chip(label[:3] + "…")
-            minimum.on_size_change = self._measure(f"minimum:{index}")
-            measurements.append(minimum)
-        for count in range(1, len(uses) + 1):
-            measurements.append(ft.Text(
-                f"+{count}", theme_style=ft.TextThemeStyle.BODY_MEDIUM,
-                on_size_change=self._measure(f"count:{count}"),
-            ))
-        self.controls = [
-            self._row,
-            ft.Container(
-                content=ft.Semantics(
-                    content=ft.Row(controls=measurements, scroll=ft.ScrollMode.HIDDEN),
-                    hidden=True, exclude_semantics=True,
-                ),
-                opacity=0, ignore_interactions=True,
-                top=0, left=0, right=0, height=0,
-            ),
-        ]
+        for index, chip in enumerate(self._chips):
+            chip.on_size_change = self._measure(index)
+        self._counter_width = 0.0
+        self._counter = ft.Text(
+            f"+{len(uses)}", color=PRIMARY_COLOR,
+            theme_style=ft.TextThemeStyle.BODY_MEDIUM,
+            on_size_change=self._measure_counter,
+        )
+        self._row = ft.Row([*self._chips, self._counter], spacing=CARD_SPACING,
+                           scroll=ft.ScrollMode.HIDDEN, opacity=0)
+        self.content = self._row
 
-    def _measure(self, key: str):
+    def _measure(self, index: int):
         def measured(event: ft.LayoutSizeChangeEvent) -> None:
-            self._widths[key] = event.width
-            self._fit()
+            if self._chips[index].width is None:
+                self._widths[f"use:{index}"] = event.width
+                self._fit()
         return measured
+
+    def _measure_counter(self, event: ft.LayoutSizeChangeEvent) -> None:
+        self._counter_width = event.width
+        self._fit()
 
     def _resized(self, event: ft.LayoutSizeChangeEvent) -> None:
         self._available = max(0, event.width)
@@ -150,17 +201,18 @@ class _CompactUseChips(ft.Stack):
     def _fit(self) -> None:
         total = len(self._uses)
         countable = len(self._chips)
-        if self._available <= 0 or len(self._widths) < countable * 2 + total:
+        if self._available <= 0 or any(f"use:{i}" not in self._widths for i in range(countable)):
+            return
+        if not self._counter_width:
             return
         natural = [self._widths[f"use:{index}"] for index in range(countable)]
         visible_widths = []
         for count in range(countable, 0, -1):
             hidden = total - count
-            counter_width = self._widths[f"count:{hidden}"] if hidden else 0
+            counter_width = self._counter_width if hidden else 0
             gaps = CARD_SPACING * (count if hidden else count - 1)
             remaining = self._available - sum(natural[:count - 1]) - gaps - counter_width
-            minimum_width = min(natural[count - 1], self._widths[f"minimum:{count - 1}"])
-            if remaining >= minimum_width:
+            if remaining >= natural[count - 1] or (count == 1 and remaining > 24):
                 visible_widths = natural[:count - 1] + [min(natural[count - 1], remaining)]
                 break
         hidden = total - len(visible_widths)
@@ -173,14 +225,11 @@ class _CompactUseChips(ft.Stack):
             chip.expand = False
             chip.width = width
         if hidden:
-            controls.append(ft.Text(
-                f"+{hidden}", color=TEXT_COLOR, theme_style=ft.TextThemeStyle.BODY_MEDIUM,
-                tooltip="\n".join(
-                    use for index, use in enumerate(self._uses) if index not in self._indices[:len(visible_widths)]
-                ),
-                width=min(self._available, self._widths[f"count:{hidden}"]),
-                max_lines=1, overflow=ft.TextOverflow.ELLIPSIS,
-            ))
+            self._counter.value = f"+{hidden}"
+            self._counter.tooltip = "\n".join(
+                use for index, use in enumerate(self._uses) if index not in self._indices[:len(visible_widths)]
+            )
+            controls.append(self._counter)
         self._row.controls = controls
         self._row.opacity = 1
         if self.parent is not None:
@@ -242,20 +291,26 @@ def action_button(
     *,
     icon: ft.IconData | None = None,
     kind: str = "primary",
-    rounded: bool = True,
 ) -> ft.FilledButton:
+    if label.startswith("Save"):
+        icon = ft.Icons.SAVE_OUTLINED
     return ft.FilledButton(
-        label, icon=ft.Icon(icon, size=20) if icon else None, on_click=on_click,
-        style=action_style(kind, rounded=rounded), elevation=0,
-        expand=True, height=MIN_TOUCH_TARGET_SIZE,
+        label, icon=retry_icon() if label == "Try again" else (ft.Icon(icon, size=20) if icon else None), on_click=on_click,
+        style=action_style(kind), elevation=0,
+        expand=True,
     )
 
 
-def medication_subtitle(strength: str | None, form: str | None) -> ft.Text:
+def retry_icon() -> ft.Icon:
+    return ft.Icon(ft.Icons.SYNC, size=20, rotate=math.pi / 2)
+
+
+def medication_subtitle(strength: str | None, form: str | None, *, max_lines: int | None = None) -> ft.Text:
     return ft.Text(
         " · ".join(value.strip() for value in (strength, form) if value and value.strip()),
         theme_style=ft.TextThemeStyle.BODY_MEDIUM,
         visible=bool(strength or form),
+        max_lines=max_lines, overflow=ft.TextOverflow.ELLIPSIS if max_lines else None,
     )
 
 
@@ -278,15 +333,61 @@ def status_photo(photo: bytes | None, status: str, label: str) -> ft.Stack:
     ])
 
 
-def result_layout(controls: list[ft.Control], actions: list[ft.Control]) -> ft.SafeArea:
-    """One white result card with scrollable information and accessible bottom actions."""
+def result_layout(
+    controls: list[ft.Control], actions: list[ft.Control], *,
+    center_information: bool = False, action_spacing: float = CONTENT_PADDING,
+) -> ft.SafeArea:
+    """Scroll the whole result card, including its trailing actions."""
     card = soft_card(ft.Column([
-        ft.ListView(controls=controls, spacing=CARD_SPACING, expand=True),
+        ft.Column(controls=controls, spacing=CARD_SPACING, tight=True,
+                  horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
         ft.Column([ft.Row([action]) for action in actions], spacing=8,
                   horizontal_alignment=ft.CrossAxisAlignment.STRETCH, tight=True),
-    ], spacing=CONTENT_PADDING, expand=True, horizontal_alignment=ft.CrossAxisAlignment.STRETCH))
-    card.expand = True
-    return ft.SafeArea(content=card, expand=True)
+    ], spacing=action_spacing, tight=True, horizontal_alignment=ft.CrossAxisAlignment.STRETCH))
+    viewport = ft.ListView([card], expand=True, padding=ft.Padding.symmetric(vertical=SCREEN_MARGIN))
+    viewport.on_size_change = stretch_card(card, center_information=center_information)
+    return ft.SafeArea(content=viewport, expand=True, avoid_intrusions_top=False, avoid_intrusions_bottom=False)
+
+
+def stretch_card(
+    card: ft.Container, leading: ft.Control | None = None, *,
+    leading_spacing: float = CARD_SPACING, center_information: bool = True,
+):
+    """Distribute spare viewport space as padding, preserving natural content sizes."""
+    sizes: dict[str, float] = {}
+    information, actions = card.content.controls
+    centered_information = ft.Container(content=information)
+    card.content.controls[0] = centered_information
+    extra = 0.0
+
+    def measured(key: str):
+        def resize(event: ft.LayoutSizeChangeEvent) -> None:
+            nonlocal extra
+            sizes[key] = event.height
+            if not all(name in sizes for name in ("viewport", "information", "actions")):
+                return
+            if leading is not None and "leading" not in sizes:
+                return
+            available = sizes["viewport"] - SCREEN_MARGIN * 2 - CONTENT_PADDING * 2
+            if leading is not None:
+                available -= sizes["leading"] + leading_spacing
+            natural_height = sizes["information"] + card.content.spacing + sizes["actions"]
+            padding = max(0, available - natural_height)
+            if abs(extra - padding) > 0.5:
+                extra = padding
+                centered_information.padding = (
+                    ft.Padding.symmetric(vertical=padding / 2) if center_information
+                    else ft.Padding.only(bottom=padding)
+                )
+                if card.parent is not None:
+                    card.update()
+        return resize
+
+    information.on_size_change = measured("information")
+    actions.on_size_change = measured("actions")
+    if leading is not None:
+        leading.on_size_change = measured("leading")
+    return measured("viewport")
 
 
 def match_option(
@@ -295,6 +396,7 @@ def match_option(
     form: str | None,
     *,
     selected: bool = False,
+    show_selection: bool = True,
     on_click: ft.ControlEventHandler[ft.Container] | None = None,
 ) -> ft.Container:
     return ft.Container(
@@ -307,6 +409,7 @@ def match_option(
                 border=ft.Border.all(1, PRIMARY_COLOR if selected else BLUE_BORDER),
                 bgcolor=PRIMARY_COLOR if selected else CARD_COLOR,
                 alignment=ft.Alignment.CENTER,
+                visible=show_selection,
             ),
         ], spacing=CARD_SPACING),
         padding=CONTENT_PADDING, border_radius=12,
@@ -316,11 +419,50 @@ def match_option(
     )
 
 
-def information_row(label: str, value: str) -> ft.Container:
+def information_row(label: str, value: str | ft.Text) -> ft.Container:
+    text = value if isinstance(value, ft.Text) else ft.Text(value)
+    text.color, text.expand, text.text_align = TEXT_COLOR, 2, ft.TextAlign.RIGHT
     return ft.Container(
         content=ft.Row([
-            ft.Text(label, theme_style=ft.TextThemeStyle.BODY_MEDIUM, expand=True),
-            ft.Text(value, color=TEXT_COLOR, weight=ft.FontWeight.W_700, expand=2, text_align=ft.TextAlign.RIGHT),
+            ft.Text(label, theme_style=ft.TextThemeStyle.BODY_MEDIUM, no_wrap=True),
+            text,
         ], spacing=CARD_SPACING),
         padding=CONTENT_PADDING, bgcolor=BACKGROUND_COLOR, border_radius=12,
     )
+
+
+async def device_date_locale(page: ft.Page) -> ft.Locale | None:
+    try:
+        device = await page.get_device_info()
+    except ft.FletException:
+        return None
+    return device.locales[0] if device is not None and device.locales else None
+
+
+def date_label(value: date, locale: ft.Locale | None) -> str:
+    if locale is None:
+        return value.isoformat()
+    try:
+        return format_date(value, format="short", locale=str(locale))
+    except (UnknownLocaleError, ValueError):
+        return value.isoformat()
+
+
+class DeviceDate(ft.Text):
+    """Format a displayed date once the device's regional preferences are available."""
+
+    def __init__(self, value: date):
+        super().__init__(value=value.isoformat())
+        self._date = value
+        self._format_task = None
+
+    def did_mount(self) -> None:
+        self._format_task = self.page.run_task(self._format_date)
+
+    def will_unmount(self) -> None:
+        if self._format_task is not None:
+            self._format_task.cancel()
+
+    async def _format_date(self) -> None:
+        self.value = date_label(self._date, await device_date_locale(self.page))
+        self.update()

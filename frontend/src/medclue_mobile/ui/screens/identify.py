@@ -6,14 +6,12 @@ import flet as ft
 
 from medclue_mobile.api_client import PhotoTooLargeError
 from medclue_mobile.photos import CameraPermissionError, PhotoManager
-from medclue_mobile.ui.components import action_button, soft_card
+from medclue_mobile.ui.components import action_button, camera_guide, retry_icon, soft_card
 from medclue_mobile.ui.dialogs import show_error, show_photo_too_large
 from medclue_mobile.ui.theme import (
-    ACCENT_COLOR,
     CARD_COLOR,
     CARD_SPACING,
     CONTENT_PADDING,
-    ICON_SIZE,
     SCREEN_MARGIN,
     SECTION_SPACING,
 )
@@ -25,7 +23,7 @@ class IdentifyScreen(ft.Container):
         photos: PhotoManager,
         on_identify: Callable[[bytes, str], Awaitable[None]],
     ):
-        super().__init__(expand=True, padding=SCREEN_MARGIN)
+        super().__init__(expand=True, padding=ft.Padding.symmetric(horizontal=SCREEN_MARGIN))
         self._photos = photos
         self._on_identify = on_identify
         self._active = False
@@ -46,7 +44,7 @@ class IdentifyScreen(ft.Container):
         self._status_message = ft.Text(
             "Please wait while the camera starts.", text_align=ft.TextAlign.CENTER
         )
-        self._status_action = ft.TextButton("Try again", on_click=self._retry_camera, visible=False)
+        self._status_action = ft.TextButton("Try again", icon=retry_icon(), on_click=self._retry_camera, visible=False)
         self._status_panel = ft.Container(
             content=ft.Column(
                 controls=[self._status_title, self._status_message, self._status_action],
@@ -59,31 +57,7 @@ class IdentifyScreen(ft.Container):
             padding=CONTENT_PADDING,
             alignment=ft.Alignment.CENTER,
         )
-        guide_side = ft.BorderSide(2, ACCENT_COLOR)
-        self._guide = ft.Container(
-            content=ft.Stack(controls=[
-                ft.Container(
-                    width=ICON_SIZE, height=ICON_SIZE, top=0, left=0,
-                    border=ft.Border(top=guide_side, left=guide_side),
-                ),
-                ft.Container(
-                    width=ICON_SIZE, height=ICON_SIZE, top=0, right=0,
-                    border=ft.Border(top=guide_side, right=guide_side),
-                ),
-                ft.Container(
-                    width=ICON_SIZE, height=ICON_SIZE, bottom=0, left=0,
-                    border=ft.Border(bottom=guide_side, left=guide_side),
-                ),
-                ft.Container(
-                    width=ICON_SIZE, height=ICON_SIZE, bottom=0, right=0,
-                    border=ft.Border(bottom=guide_side, right=guide_side),
-                ),
-            ]),
-            margin=SECTION_SPACING,
-            visible=False,
-            ignore_interactions=True,
-            border=ft.Border.all(0.5, ACCENT_COLOR),
-        )
+        self._guide = camera_guide(visible=False)
         camera_card = ft.Container(
             ft.Stack(
                 controls=[photos.camera, self._guide, self._status_panel],
@@ -94,17 +68,19 @@ class IdentifyScreen(ft.Container):
         )
         camera_card.aspect_ratio = 4 / 3
         camera_card.on_size_change = self._resize_preview
-        self._identify_button = action_button("Identify medication", self._identify, icon=ft.Icons.CAMERA_ALT_OUTLINED, rounded=False)
+        self._identify_button = action_button("Identify medication", self._identify, icon=ft.Icons.CAMERA_ALT_OUTLINED)
         self._identify_button.disabled = True
-        self.content = ft.SafeArea(
+        card = soft_card(ft.Column(
+            controls=[camera_card, ft.Row(controls=[self._identify_button])],
+            spacing=CONTENT_PADDING, tight=True,
+            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+        ))
+        card.margin = ft.Margin.symmetric(vertical=SCREEN_MARGIN)
+        self.content = ft.SafeArea(avoid_intrusions_top=False, avoid_intrusions_bottom=False,
             content=ft.Column(
                 controls=[
                     ft.Column(
-                        controls=[soft_card(ft.Column(
-                            controls=[camera_card, ft.Row(controls=[self._identify_button])],
-                            spacing=CONTENT_PADDING, tight=True,
-                            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
-                        ))],
+                        controls=[card],
                         spacing=CARD_SPACING,
                         alignment=ft.MainAxisAlignment.CENTER,
                         horizontal_alignment=ft.CrossAxisAlignment.STRETCH,

@@ -26,7 +26,7 @@ from medclue_mobile.ui.screens.identifying_medication import IdentifyingMedicati
 from medclue_mobile.ui.screens.medication_details import MedicationDetailsScreen
 from medclue_mobile.ui.screens.possible_match_result import PossibleMatchResultScreen
 from medclue_mobile.ui.screens.possible_matches import PossibleMatchesScreen
-from medclue_mobile.ui.theme import BAR_HEIGHT, CARD_COLOR, BLUE_SURFACE, FONT_FAMILY
+from medclue_mobile.ui.theme import BAR_HEIGHT, HEADER_HEIGHT, CARD_COLOR, BLUE_SURFACE
 
 
 VERIFIED_RESULT = {
@@ -113,8 +113,7 @@ def test_app_starts_on_home(app_context):
         assert [chip.content.value for chip in chips._chips] == ["Moderate pain", "Fever"]
         assert [chip.tooltip for chip in chips._chips] == uses[:2]
         assert chips._uses == saved.uses == uses
-        chips._widths = {"use:0": 120, "use:1": 70, "minimum:0": 65, "minimum:1": 60,
-                         "count:1": 20, "count:2": 20, "count:3": 20}
+        chips._widths, chips._counter_width = {"use:0": 120, "use:1": 70}, 20
         chips._available = 150
         chips._fit()
         assert chips._row.controls[-1].value == "+2"
@@ -123,7 +122,7 @@ def test_app_starts_on_home(app_context):
         app_context.session.identify.assert_not_awaited()
         assert card.content.controls[1].content.controls[1].value == "500 mg · tablet"
         assert app_context.app._screen._count.value == "1 medications"
-        assert app_context.app._screen.sort_dropdown.options[0].style.bgcolor == BLUE_SURFACE
+        assert app_context.app._screen._sort_button.items[0].content.bgcolor == BLUE_SURFACE
     asyncio.run(run())
 
 
@@ -160,7 +159,7 @@ def test_photo_dialog_fills_its_frame_without_distorting_the_camera(app_context,
         task = asyncio.create_task(app_context.app._take_photo())
         await asyncio.sleep(0)
         dialog = app_context.page.show_dialog.call_args.args[0]
-        frame, actions = dialog.content.content.controls
+        frame, actions, _ = dialog.content.content.controls
         assert actions.controls[0].expand
         frame.on_size_change(SimpleNamespace(width=280, height=210))
         assert photos.camera.width == pytest.approx(280)
@@ -190,9 +189,8 @@ def test_navigation_keeps_shared_bars_and_inline_actions(app_context):
         await app._open_details(1)
         assert app._view.floating_action_button is None
         assert app._screen._edit_button.content == "Edit medication"
-        assert app._view.appbar.toolbar_height == app._navigation.height == BAR_HEIGHT
+        assert (app._view.appbar.toolbar_height, app._navigation.height) == (HEADER_HEIGHT, BAR_HEIGHT)
         assert app._view.appbar.bgcolor == app._navigation.bgcolor == CARD_COLOR
-        assert app_context.page.fonts == {FONT_FAMILY: "fonts/PlusJakartaSans.ttf"}
         await app._open_edit(1)
         assert app._view.floating_action_button is None
         assert app._screen._save_button.content == "Save medication"
@@ -339,15 +337,15 @@ def test_reselecting_add_keeps_the_current_form(app_context):
     asyncio.run(run())
 
 
-@pytest.mark.parametrize("button_index,screen_type,tab", [(1, IdentifyScreen, 1), (2, AddMedicationScreen, 2)])
-def test_empty_cabinet_buttons_open_the_corresponding_section(app_context, button_index, screen_type, tab):
+@pytest.mark.parametrize("screen_type,tab", [(IdentifyScreen, 1), (AddMedicationScreen, 2)])
+def test_empty_cabinet_buttons_open_the_corresponding_section(app_context, screen_type, tab):
     async def run():
         app_context.cabinet.list_medications.return_value = []
         await app_context.app.start()
         screen = app_context.app._screen
         assert screen._count.value == "0 medications"
-        actions = screen._empty_state.content.controls
-        await actions[4 if tab == 1 else 3].controls[0].on_click(None)
+        actions = screen._empty_state.content.controls[1].controls
+        await actions[1 if tab == 1 else 0].controls[0].on_click(None)
         assert_screen(app_context.app, screen_type, tab)
     asyncio.run(run())
 
@@ -391,14 +389,14 @@ def test_identification_result_opens_correct_screen_and_back_returns_to_camera(a
         await app._screen._on_identify(b"captured photo", "image/jpeg")
         assert_screen(app, screen_type, 1)
         if isinstance(app._screen, PossibleMatchResultScreen):
-            card = app._screen.content.content
+            card = app._screen.content.content.controls[0]
             assert card.bgcolor == CARD_COLOR
             information, actions = card.content.controls
-            assert isinstance(information, ft.ListView) and information.expand
-            assert [row.controls[0] for row in actions.controls] == [button for button in (
+            assert isinstance(information, ft.Container) and information.content.tight
+            assert [row.controls[0] for row in actions.controls] == ([app._screen._add_button, app._screen._retake_button] if result["status"] == "no_match" else [button for button in (
                 app._screen._retry_button, app._screen._retake_button, app._screen._add_button,
-            ) if button.visible]
-            content = information.controls
+            ) if button.visible])
+            content = information.content.controls
             assert content[0].controls[0].aspect_ratio == 4 / 3
             badge = content[0].controls[1].content.controls[1]
             assert badge.value == ("Possible match" if result.get("suggested_candidate") else "Not identified")
@@ -408,7 +406,7 @@ def test_identification_result_opens_correct_screen_and_back_returns_to_camera(a
                 assert details[0].value == candidate["name"]
                 expected_description = " · ".join(candidate[field] for field in ("strength", "form") if candidate.get(field))
                 assert details[1].value == expected_description
-                assert content[-1].bgcolor == BLUE_SURFACE
+                assert content[-1].bgcolor == CARD_COLOR
             assert content[2].max_lines is None
         app_context.error.assert_not_awaited()
         await press_back(app)
@@ -444,7 +442,7 @@ def test_verified_save_button_opens_add_instead_of_saving_automatically(app_cont
         await app.start()
         await select_tab(app, 1)
         await app._screen._on_identify(b"captured photo", "image/jpeg")
-        chips = app._screen.content.content.content.controls[0].controls[-1]
+        chips = app._screen.content.content.controls[0].content.controls[0].content.controls[-1]
         assert chips.wrap and len(chips.controls) == len(official_uses)
         assert [chip.content.value for chip in chips.controls] == official_uses
         assert all(chip.content.max_lines is None and chip.content.overflow is None for chip in chips.controls)
@@ -583,7 +581,7 @@ def test_selecting_candidate_checks_its_index_and_opens_the_result(app_context):
         await select_tab(app, 1)
         await app._screen._on_identify(b"captured photo", "image/jpeg")
         assert_screen(app, PossibleMatchesScreen, 1)
-        actions = app._screen.content.content.content.controls[-1]
+        actions = app._screen.content.content.controls[0].content.controls[-1]
         assert isinstance(actions, ft.Column)
         assert [row.controls[0] for row in actions.controls] == [app._screen._retake_button, app._screen._add_button]
         assert actions.horizontal_alignment == ft.CrossAxisAlignment.STRETCH
@@ -609,7 +607,7 @@ def test_try_again_retries_the_session_and_opens_the_result(app_context):
         await select_tab(app, 1)
         await app._screen._on_identify(b"captured photo", "image/jpeg")
         assert_screen(app, PossibleMatchResultScreen, 1)
-        content = app._screen.content.content.content.controls[0].controls
+        content = app._screen.content.content.controls[0].content.controls[0].content.controls
         assert content[-1].content.controls[0].controls[1].value == "100 mg"
         await app._screen._retry_button.on_click(None)
         app_context.session.retry.assert_awaited_once_with()
@@ -629,7 +627,7 @@ def test_manual_entry_from_unconfirmed_result_keeps_photo_and_editable_suggested
         await select_tab(app, 1)
         await app._screen._on_identify(b"captured photo", "image/jpeg")
         assert_screen(app, PossibleMatchResultScreen, 1)
-        content = app._screen.content.content.content.controls[0].controls
+        content = app._screen.content.content.controls[0].content.controls[0].content.controls
         assert not content[-1].content.controls[0].controls[1].visible
         await app._screen._add_button.on_click(None)
         assert_screen(app, AddMedicationScreen, 2)

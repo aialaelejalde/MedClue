@@ -19,7 +19,7 @@ class PossibleMatchesScreen(ft.Container):
         on_retake: Callable[[], Awaitable[None]],
         on_add: Callable[[Medication], Awaitable[None]],
     ):
-        super().__init__(expand=True, padding=SCREEN_MARGIN)
+        super().__init__(expand=True, padding=ft.Padding.symmetric(horizontal=SCREEN_MARGIN))
         if not isinstance(result, dict) or result.get("status") != "multiple_matches":
             raise ValueError("A multiple-matches result is required.")
         candidates = result.get("candidates", [])

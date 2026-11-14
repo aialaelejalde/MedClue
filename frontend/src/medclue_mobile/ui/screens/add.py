@@ -27,7 +27,7 @@ class AddMedicationScreen(ft.Container):
         suggested_name: bool = False,
         on_take_photo: Callable[[], Awaitable[bytes | None]] | None = None,
     ):
-        super().__init__(expand=True, padding=SCREEN_MARGIN)
+        super().__init__(expand=True, padding=ft.Padding.symmetric(horizontal=SCREEN_MARGIN))
         if medication is not None and (medication.id is not None or medication.created_at is not None):
             raise ValueError("Adding a medication requires a new record without saved metadata.")
 
@@ -43,7 +43,7 @@ class AddMedicationScreen(ft.Container):
             on_take_photo=self._take_photo if on_take_photo is not None else None,
         )
         self._save_button = action_button("Save medication", self._save)
-        self.content = form_screen_layout("Add medication", self.form, self._save_button)
+        self.content = form_screen_layout(None, self.form, self._save_button)
 
     async def can_leave(self) -> bool:
         if self._saved_medication is not None:

@@ -19,7 +19,7 @@ class PossibleMatchResultScreen(ft.Container):
         on_retake: Callable[[], Awaitable[None]],
         on_add: Callable[[Medication], Awaitable[None]],
     ):
-        super().__init__(expand=True, padding=SCREEN_MARGIN)
+        super().__init__(expand=True, padding=ft.Padding.symmetric(horizontal=SCREEN_MARGIN))
         if not isinstance(result, dict) or result.get("status") not in (
             "not_identified", "no_match", "connection_error", "timeout"
         ):
@@ -59,11 +59,14 @@ class PossibleMatchResultScreen(ft.Container):
         self._on_add = on_add
         self._busy = False
         self._retry_button = action_button("Try again", self._retry, icon=ft.Icons.SYNC, kind="secondary")
-        self._retry_button.visible = status in ("connection_error", "timeout")
+        self._retry_button.visible = status != "no_match"
         self._retake_button = action_button("Retake photo", self._retake, icon=ft.Icons.CAMERA_ALT_OUTLINED,
-                                            kind="tertiary" if status == "timeout" else "secondary")
-        self._retake_button.visible = status != "connection_error"
-        self._add_button = action_button("Add medication manually", self._add, icon=ft.Icons.ADD_CIRCLE_OUTLINE, kind="tertiary")
+                                            kind="secondary" if status == "no_match" else "tertiary")
+        self._add_button = action_button(
+            "Save to my medications" if status == "no_match" else "Add medication manually",
+            self._add, icon=ft.Icons.ADD_CIRCLE_OUTLINE,
+            kind="primary" if status == "no_match" else "tertiary",
+        )
 
         if status == "not_identified":
             title = "Medication not identified"
@@ -95,10 +98,11 @@ class PossibleMatchResultScreen(ft.Container):
             ft.Text(message, theme_style=ft.TextThemeStyle.BODY_MEDIUM),
         ]
         if name:
-            controls.append(match_option(name, self._medication.strength, self._medication.form, selected=True))
-        self.content = result_layout(controls, [button for button in (
+            controls.append(match_option(name, self._medication.strength, self._medication.form, show_selection=False))
+        actions = [self._add_button, self._retake_button] if status == "no_match" else [
             self._retry_button, self._retake_button, self._add_button,
-        ) if button.visible])
+        ]
+        self.content = result_layout(controls, actions)
 
     async def _retry(self, event: ft.Event) -> None:
         if self._busy or not self._retry_button.visible:

@@ -15,6 +15,7 @@ from medclue_mobile.medications import Medication
 from medclue_mobile.photos import CameraPermissionError, PhotoManager
 from medclue_mobile.sqlite_repository import MedicationRepository
 from medclue_mobile.ui.dialogs import confirm_leave_identification, show_error
+from medclue_mobile.ui.components import action_button, camera_guide
 from medclue_mobile.ui.screens.add import AddMedicationScreen
 from medclue_mobile.ui.screens.edit_medication import EditMedicationScreen
 from medclue_mobile.ui.screens.home import HomeScreen
@@ -24,7 +25,7 @@ from medclue_mobile.ui.screens.identifying_medication import IdentifyingMedicati
 from medclue_mobile.ui.screens.medication_details import MedicationDetailsScreen
 from medclue_mobile.ui.screens.possible_match_result import PossibleMatchResultScreen
 from medclue_mobile.ui.screens.possible_matches import PossibleMatchesScreen
-from medclue_mobile.ui.theme import BACKGROUND_COLOR, CARD_COLOR, CARD_SPACING, FONT_FAMILY, BAR_HEIGHT, PRIMARY_COLOR, TEXT_COLOR, create_theme
+from medclue_mobile.ui.theme import BACKGROUND_COLOR, CARD_COLOR, FONT_FAMILY, BAR_HEIGHT, HEADER_HEIGHT, PRIMARY_COLOR, SCREEN_MARGIN, CONTENT_PADDING, create_theme
 
 
 DEFAULT_BACKEND_URL = "https://medclue-api-377942439711.europe-southwest1.run.app"
@@ -47,9 +48,9 @@ class MedClueApp:
         self._photo_result: asyncio.Future | None = None
         self._navigation = ft.NavigationBar(
             destinations=[
-                ft.NavigationBarDestination(icon=ft.Icon(ft.Icons.HOME_OUTLINED, color=PRIMARY_COLOR), selected_icon=ft.Icon(ft.Icons.HOME_OUTLINED, color=TEXT_COLOR), label="Home"),
-                ft.NavigationBarDestination(icon=ft.Icon(ft.Icons.CAMERA_ALT_OUTLINED, color=PRIMARY_COLOR), selected_icon=ft.Icon(ft.Icons.CAMERA_ALT_OUTLINED, color=TEXT_COLOR), label="Identify"),
-                ft.NavigationBarDestination(icon=ft.Icon(ft.Icons.ADD_CIRCLE_OUTLINE, color=PRIMARY_COLOR), selected_icon=ft.Icon(ft.Icons.ADD_CIRCLE_OUTLINE, color=TEXT_COLOR), label="Add"),
+                ft.NavigationBarDestination(icon=ft.Icon(ft.Icons.HOME_OUTLINED, color=PRIMARY_COLOR), selected_icon=ft.Icon(ft.Icons.HOME, color=PRIMARY_COLOR), label="Home"),
+                ft.NavigationBarDestination(icon=ft.Icon(ft.Icons.CAMERA_ALT_OUTLINED, color=PRIMARY_COLOR), selected_icon=ft.Icon(ft.Icons.CAMERA_ALT, color=PRIMARY_COLOR), label="Identify"),
+                ft.NavigationBarDestination(icon=ft.Icon(ft.Icons.ADD_CIRCLE_OUTLINE, color=PRIMARY_COLOR), selected_icon=ft.Icon(ft.Icons.ADD_CIRCLE, color=PRIMARY_COLOR), label="Add"),
             ],
             selected_index=0,
             on_change=self._tab_changed,
@@ -59,18 +60,14 @@ class MedClueApp:
         )
         self._view = page.views[0] if page.views else ft.View()
         self._view.padding = 0
+        self._view.spacing = 0
         self._view.bgcolor = BACKGROUND_COLOR
         self._view.on_confirm_pop = self._back
         self._view.appbar = ft.AppBar(
-            title=ft.Container(
-                content=ft.Stack([
-                    ft.Image(src="medclue_logo.png", width=260, height=38, left=-40, top=0,
-                             fit=ft.BoxFit.COVER, semantics_label="MedClue"),
-                ], clip_behavior=ft.ClipBehavior.HARD_EDGE),
-                width=184, height=38,
-            ),
+            title=ft.Image(src="medclue_logo.png", width=116, height=24,
+                           fit=ft.BoxFit.CONTAIN, semantics_label="MedClue"),
             automatically_imply_leading=False, center_title=False,
-            toolbar_height=BAR_HEIGHT, bgcolor=CARD_COLOR, elevation=0, elevation_on_scroll=0,
+            toolbar_height=HEADER_HEIGHT, bgcolor=CARD_COLOR, elevation=0, elevation_on_scroll=0,
             title_spacing=16,
         )
 
@@ -306,7 +303,8 @@ class MedClueApp:
                 if dialog.open and not self._closed:
                     dialog.update()
 
-        take_button = ft.FilledButton("Take photo", on_click=capture, disabled=True, expand=True)
+        take_button = action_button("Take photo", capture, icon=ft.Icons.CAMERA_ALT_OUTLINED)
+        take_button.disabled = True
         preview_width = 0
         preview_height = 0
         preview_ratio = 3 / 4
@@ -342,30 +340,33 @@ class MedClueApp:
 
         photos.camera.on_state_change = camera_changed
         camera_frame = ft.Container(
-            content=ft.Stack(controls=[photos.camera]),
+            content=ft.Stack(controls=[photos.camera, camera_guide()], fit=ft.StackFit.EXPAND),
             aspect_ratio=4 / 3,
             clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
             border_radius=16,
             on_size_change=resize_preview,
         )
         dialog = ft.AlertDialog(
-            title=ft.Text("Medication photo"),
             content=ft.Container(
-                width=min(420, (self._page.width or 360) - 80),
+                width=max(0, (self._page.width or 360) - 2 * (SCREEN_MARGIN + CONTENT_PADDING)),
                 content=ft.Column(
                     controls=[
                         camera_frame,
                         ft.Row(controls=[take_button]),
+                        ft.Row(controls=[action_button("Cancel", cancel, kind="tertiary")]),
                     ],
-                    spacing=CARD_SPACING,
+                    spacing=CONTENT_PADDING,
                     tight=True,
                     horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
                 ),
             ),
-            actions=[ft.TextButton("Cancel", on_click=cancel)],
             on_dismiss=dismiss,
             scrollable=True,
-            bgcolor=BACKGROUND_COLOR,
+            bgcolor=CARD_COLOR,
+            shape=ft.RoundedRectangleBorder(radius=20),
+            inset_padding=ft.Padding.symmetric(horizontal=SCREEN_MARGIN, vertical=SCREEN_MARGIN),
+            content_padding=ft.Padding.all(CONTENT_PADDING),
+            actions_padding=0,
         )
         self._page.show_dialog(dialog)
         try:

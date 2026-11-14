@@ -42,7 +42,7 @@ class IdentificationSession:
         return (
             not self.is_running
             and self._result is not None
-            and self._result.get("status") in ("connection_error", "timeout")
+            and self._result.get("status") in ("not_identified", "connection_error", "timeout")
         )
 
     async def identify(self, photo: bytes, media_type: str = "image/jpeg") -> dict:

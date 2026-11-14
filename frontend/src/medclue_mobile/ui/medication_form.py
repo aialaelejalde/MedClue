@@ -17,10 +17,11 @@ from medclue_mobile.medications import (
     TreatmentEnd,
     validate_medication,
 )
-from medclue_mobile.ui.components import medication_photo, soft_section
+from medclue_mobile.ui.components import action_button, date_label, device_date_locale, medication_photo, soft_section, text_field
 from medclue_mobile.ui.theme import (
-    ACCENT_COLOR, BLUE_SURFACE, CARD_COLOR, PRIMARY_COLOR, TEXT_COLOR,
+    BLUE_BORDER, BLUE_SURFACE, CARD_COLOR, PRIMARY_COLOR, TEXT_COLOR,
     CARD_SPACING, CONTENT_PADDING, INPUT_RADIUS, MIN_TOUCH_TARGET_SIZE, SECTION_SPACING,
+    FONT_FAMILY, INPUT_TEXT_SIZE, SCREEN_MARGIN,
 )
 
 
@@ -76,7 +77,7 @@ class _UseOption(ft.Container):
         self._value = selected
         self.bgcolor = BLUE_SURFACE if selected else CARD_COLOR
         self.content.selected = selected
-        self.content.content.color = PRIMARY_COLOR if selected else TEXT_COLOR
+        self.content.content.color = TEXT_COLOR if selected else PRIMARY_COLOR
 
     def _toggle(self, event: ft.Event) -> None:
         self.value = not self.value
@@ -97,11 +98,13 @@ class MedicationForm(ft.Column):
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
         )
         self._original = deepcopy(medication) if medication is not None else Medication()
+        self._date_locale: ft.Locale | None = None
+        self._locale_task = None
         self._photo = self._original.photo
         self._prescription_date = self._original.prescription_date
         self._end_date = (self._original.treatment_end.end_date if self._original.treatment_end else None)
 
-        self.name_field = ft.TextField(
+        self.name_field = text_field(
             border=ft.OutlineInputBorder(border_radius=INPUT_RADIUS),
             label="Suggested name" if suggested_name else "Medication name",
             value=self._original.name or "",
@@ -113,6 +116,7 @@ class MedicationForm(ft.Column):
         self._photo_preview = medication_photo(self._photo, height=180, aspect_ratio=4 / 3, fit=ft.BoxFit.COVER)
         self._take_photo_button = ft.OutlinedButton(
             "Change photo" if self._photo else "Take photo",
+            icon=None if self._photo else ft.Icons.CAMERA_ALT_OUTLINED,
             on_click=on_take_photo,
             disabled=on_take_photo is None,
             expand=True,
@@ -132,7 +136,7 @@ class MedicationForm(ft.Column):
             for use in self._official_uses
         ]
         self._use_summary = ft.Text(theme_style=ft.TextThemeStyle.BODY_SMALL)
-        selector_shape = ft.RoundedRectangleBorder(radius=INPUT_RADIUS, side=ft.BorderSide(1, ACCENT_COLOR))
+        selector_shape = ft.RoundedRectangleBorder(radius=INPUT_RADIUS, side=ft.BorderSide(1, BLUE_BORDER))
         self._use_list = ft.ListView(controls=[ft.Column(
             controls=self._use_options,
             spacing=CARD_SPACING,
@@ -141,7 +145,7 @@ class MedicationForm(ft.Column):
             on_size_change=self._resize_use_list,
         )])
         self._use_selector = ft.ExpansionTile(
-            title=ft.Text("Select the uses that apply to you", theme_style=ft.TextThemeStyle.BODY_LARGE),
+            title=ft.Text("Select the uses that apply to you", size=INPUT_TEXT_SIZE, color=PRIMARY_COLOR),
             subtitle=ft.Container(content=self._use_summary, padding=ft.Padding.only(top=6)),
             controls=[self._use_list],
             controls_padding=ft.Padding.only(left=CONTENT_PADDING, right=CONTENT_PADDING, bottom=CARD_SPACING),
@@ -156,10 +160,10 @@ class MedicationForm(ft.Column):
             visible=bool(self._use_options), on_change=self._options_changed,
         )
         self._reason_fields = [
-            _reason_field(reason) for reason in (custom_reasons or [""])
+            self._reason_field(reason) for reason in (custom_reasons or [""])
         ]
         self._reason_group = ft.Column(
-            controls=[*self._reason_fields, ft.TextButton("Add reason", on_click=self._add_reason)],
+            controls=[*self._reason_fields, ft.Row([action_button("Add reason", self._add_reason, kind="tertiary")])],
             spacing=CARD_SPACING, tight=True,
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
         )
@@ -170,7 +174,7 @@ class MedicationForm(ft.Column):
             label="Write my own amount or instructions",
             value=amount is not None and amount.type == "custom", on_change=self._options_changed,
         )
-        self.amount_value = ft.TextField(
+        self.amount_value = text_field(
             label="Quantity", value=_number_text(amount.value) if amount else "", expand=True,
             border=ft.OutlineInputBorder(border_radius=INPUT_RADIUS),
         )
@@ -178,7 +182,7 @@ class MedicationForm(ft.Column):
             "Unit", {unit: AMOUNT_UNIT_LABELS[unit] for unit in AMOUNT_UNITS},
             amount.unit if amount else None,
         )
-        self.amount_text = ft.TextField(
+        self.amount_text = text_field(
             label="My amount or instructions", value=(amount.text or "") if amount else "", multiline=True,
             border=ft.OutlineInputBorder(border_radius=INPUT_RADIUS),
         )
@@ -187,7 +191,7 @@ class MedicationForm(ft.Column):
         frequency = self._original.frequency
         self.frequency_type = _dropdown("Frequency", FREQUENCY_LABELS, frequency.type if frequency else None)
         self.frequency_type.on_select = self._options_changed
-        self.frequency_value = ft.TextField(
+        self.frequency_value = text_field(
             label="Every", value=_number_text(frequency.value) if frequency else "",
             border=ft.OutlineInputBorder(border_radius=INPUT_RADIUS),
         )
@@ -199,7 +203,7 @@ class MedicationForm(ft.Column):
             controls=[self.frequency_value, ft.Row(controls=[self.frequency_unit])], spacing=CARD_SPACING, tight=True,
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
         )
-        self.frequency_text = ft.TextField(
+        self.frequency_text = text_field(
             label="My frequency instructions", value=(frequency.text or "") if frequency else "", multiline=True,
             border=ft.OutlineInputBorder(border_radius=INPUT_RADIUS),
         )
@@ -207,20 +211,20 @@ class MedicationForm(ft.Column):
         food = self._original.food
         self.food_type = _dropdown("Food instructions", FOOD_LABELS, food.type if food else None)
         self.food_type.on_select = self._options_changed
-        self.food_text = ft.TextField(
+        self.food_text = text_field(
             label="My food instructions", value=(food.text or "") if food else "", multiline=True,
             border=ft.OutlineInputBorder(border_radius=INPUT_RADIUS),
         )
 
-        self._prescription_button = ft.OutlinedButton(on_click=lambda event: self._pick_date(False))
+        self._prescription_button = ft.OutlinedButton(icon=ft.Icons.CALENDAR_MONTH_OUTLINED, on_click=lambda event: self._pick_date(False))
         self._clear_prescription_button = ft.OutlinedButton("Clear date", on_click=lambda event: self._set_date(False, None))
         treatment_end = self._original.treatment_end
         self.treatment_end_type = _dropdown(None, TREATMENT_END_LABELS, treatment_end.type if treatment_end else None)
         self.treatment_end_type.on_select = self._options_changed
-        self._end_button = ft.OutlinedButton(on_click=lambda event: self._pick_date(True))
+        self._end_button = ft.OutlinedButton(icon=ft.Icons.CALENDAR_MONTH_OUTLINED, on_click=lambda event: self._pick_date(True))
         self._clear_end_button = ft.OutlinedButton("Clear date", on_click=lambda event: self._set_date(True, None))
         self._end_date_group = ft.Row(controls=[self._end_button, self._clear_end_button], wrap=True)
-        self.notes_field = ft.TextField(
+        self.notes_field = text_field(
             border=ft.OutlineInputBorder(border_radius=INPUT_RADIUS),
             label="Additional notes", value=self._original.notes or "", multiline=True,
             hint_text="Write anything you'd like to remember about this medication...",
@@ -272,6 +276,9 @@ class MedicationForm(ft.Column):
             self.amount_text, self.frequency_type, self.frequency_value, self.frequency_unit,
             self.frequency_text, self.food_type, self.food_text, self.treatment_end_type, self.notes_field,
         ]
+        for field in self._fields:
+            if isinstance(field, ft.Dropdown):
+                field.on_select = self._options_changed
         self._update_visibility()
         self._update_date_labels()
         self._initial_values = self._snapshot()
@@ -280,12 +287,42 @@ class MedicationForm(ft.Column):
         """Include incomplete input so leaving cannot silently discard it."""
         return self._snapshot() != self._initial_values
 
+    def did_mount(self) -> None:
+        self._locale_task = self.page.run_task(self._load_date_locale)
+
+    def will_unmount(self) -> None:
+        if self._locale_task is not None:
+            self._locale_task.cancel()
+
+    async def _load_date_locale(self) -> None:
+        self._date_locale = await device_date_locale(self.page)
+        self._update_date_labels()
+        self.update()
+
     def _add_reason(self, event: ft.Event) -> None:
-        field = _reason_field()
+        field = self._reason_field()
         self._reason_fields.append(field)
         self._reason_group.controls.insert(-1, field)
         self._fields.append(field)
         self._refresh()
+
+    def _reason_field(self, value: str = "") -> ft.TextField:
+        field = text_field(
+            label="Reason", value=value, multiline=True,
+            border=ft.OutlineInputBorder(border_radius=INPUT_RADIUS),
+        )
+
+        def remove(event: ft.Event) -> None:
+            self._reason_fields.remove(field)
+            self._reason_group.controls.remove(field)
+            self._fields.remove(field)
+            self._refresh()
+
+        field.suffix_icon = ft.IconButton(
+            icon=ft.Icons.DELETE_OUTLINE, icon_color=PRIMARY_COLOR,
+            tooltip="Delete reason", on_click=remove,
+        )
+        return field
 
     def _resize_use_list(self, event: ft.LayoutSizeChangeEvent) -> None:
         height = min(event.height, 240)
@@ -347,6 +384,7 @@ class MedicationForm(ft.Column):
             photo, height=180, aspect_ratio=4 / 3, fit=ft.BoxFit.COVER,
         ).content
         self._take_photo_button.content = "Change photo" if photo else "Take photo"
+        self._take_photo_button.icon = None if photo else ft.Icons.CAMERA_ALT_OUTLINED
         self._remove_photo_button.visible = bool(photo)
         self._refresh()
 
@@ -395,6 +433,10 @@ class MedicationForm(ft.Column):
         self._refresh()
 
     def _update_visibility(self) -> None:
+        for field in self._fields:
+            if isinstance(field, ft.Dropdown):
+                field.color = TEXT_COLOR if field.value else PRIMARY_COLOR
+                field.text_style.color = field.color
         self._use_summary.value = f"{sum(bool(option.value) for option in self._use_options)} selected"
         self._reason_group.visible = not self._use_options or bool(self._own_reason.value)
         self._quantity_group.visible = not self.amount_custom.value
@@ -407,17 +449,17 @@ class MedicationForm(ft.Column):
     def _pick_date(self, is_end: bool) -> None:
         def select_date(event: ft.Event) -> None:
             value = event.control.value
+            if isinstance(value, str):
+                value = datetime.fromisoformat(value.replace("Z", "+00:00"))
             if isinstance(value, datetime):
-                value = value.date()
-            elif isinstance(value, str):
-                value = date.fromisoformat(value[:10])
+                value = (value.astimezone() if value.tzinfo is not None else value).date()
             self._set_date(is_end, value)
 
         picker = ft.DatePicker(
             value=(self._end_date if is_end else self._prescription_date) or date.today(),
             first_date=date.min,
             last_date=date.max,
-            locale=ft.Locale("en", "GB"),
+            locale=self._date_locale,
             help_text="End of treatment" if is_end else "Prescription date",
             cancel_text="Cancel", confirm_text="OK", on_change=select_date,
         )
@@ -432,9 +474,9 @@ class MedicationForm(ft.Column):
         self._refresh()
 
     def _update_date_labels(self) -> None:
-        self._prescription_button.content = (self._prescription_date.isoformat() if self._prescription_date else "Choose date")
+        self._prescription_button.content = (date_label(self._prescription_date, self._date_locale) if self._prescription_date else "Choose date")
         self._clear_prescription_button.visible = self._prescription_date is not None
-        self._end_button.content = self._end_date.isoformat() if self._end_date else "Choose date"
+        self._end_button.content = date_label(self._end_date, self._date_locale) if self._end_date else "Choose date"
         self._clear_end_button.visible = self._end_date is not None
 
     def _snapshot(self) -> tuple:
@@ -445,19 +487,17 @@ class MedicationForm(ft.Column):
             self.update()
 
 
-def form_screen_layout(title: str, form: MedicationForm, save_button: ft.FilledButton) -> ft.SafeArea:
-    """Share the scrolling form and fixed save action between Add and Edit."""
-    form.controls.append(ft.Container(height=MIN_TOUCH_TARGET_SIZE + CARD_SPACING))
+def form_screen_layout(title: str | None, form: MedicationForm, save_button: ft.FilledButton) -> ft.SafeArea:
+    """Keep the save action at the end of the scrolling form."""
+    if title:
+        form.controls.insert(0, ft.Text(title, theme_style=ft.TextThemeStyle.HEADLINE_LARGE))
+    form.controls[0] = ft.Container(content=form.controls[0], padding=ft.Padding.only(top=SCREEN_MARGIN))
+    form.controls.append(ft.Container(content=ft.Row([save_button]), padding=ft.Padding.only(bottom=SCREEN_MARGIN)))
     return ft.SafeArea(content=ft.Column(
-        controls=[
-            ft.Text(title, theme_style=ft.TextThemeStyle.HEADLINE_LARGE),
-            ft.Stack(controls=[form, ft.Container(
-                content=ft.Row([save_button]), left=0, right=0, bottom=0,
-            )], fit=ft.StackFit.EXPAND, expand=True),
-        ],
+        controls=[form],
         spacing=CARD_SPACING, expand=True,
         horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
-    ))
+    ), avoid_intrusions_top=False, avoid_intrusions_bottom=False)
 
 
 def _form_section(title: str, groups: list[ft.Control]) -> ft.Container:
@@ -475,24 +515,27 @@ def _field_group(controls: list[ft.Control], *, title: str | None = None) -> ft.
     )
 
 
-def _reason_field(value: str = "") -> ft.TextField:
-    return ft.TextField(
-        label="Reason", value=value, multiline=True,
-        border=ft.OutlineInputBorder(border_radius=INPUT_RADIUS),
-    )
-
-
 def _dropdown(label: str | None, choices: dict[str, str], value: str | None = None) -> ft.Dropdown:
     return ft.Dropdown(
         border=ft.OutlineInputBorder(border_radius=INPUT_RADIUS),
         expand=True,
         expanded_insets=ft.Padding.all(0),
         label=label,
-        value=value or "",
-        options=[ft.DropdownOption(key="", text="Not selected")] + [
-            ft.DropdownOption(key=key, text=text) for key, text in choices.items()
+        value=value or None,
+        text_size=INPUT_TEXT_SIZE, color=TEXT_COLOR if value else PRIMARY_COLOR,
+        text_style=ft.TextStyle(size=INPUT_TEXT_SIZE, color=TEXT_COLOR if value else PRIMARY_COLOR, font_family=FONT_FAMILY),
+        label_style=ft.TextStyle(size=INPUT_TEXT_SIZE, color=PRIMARY_COLOR, font_family=FONT_FAMILY),
+        hint_style=ft.TextStyle(size=INPUT_TEXT_SIZE, color=PRIMARY_COLOR, font_family=FONT_FAMILY),
+        hint_text="Not selected",
+        options=[ft.DropdownOption(key="", text="Not selected", style=_option_style())] + [
+            ft.DropdownOption(key=key, text=text, style=_option_style()) for key, text in choices.items()
         ],
     )
+
+
+def _option_style() -> ft.ButtonStyle:
+    return ft.ButtonStyle(color=PRIMARY_COLOR,
+                          text_style=ft.TextStyle(size=INPUT_TEXT_SIZE, font_family=FONT_FAMILY))
 
 
 def _optional_text(value: str) -> str | None:
@@ -500,7 +543,7 @@ def _optional_text(value: str) -> str | None:
 
 
 def _number_text(value: float | None) -> str:
-    return str(value) if value is not None else ""
+    return str(value).removesuffix(".0") if value is not None else ""
 
 
 def _number(value: str, label: str) -> float:

@@ -7,7 +7,7 @@ import flet as ft
 
 from medclue_mobile.medications import Medication, validate_medication
 from medclue_mobile.ui.components import action_button, medication_name, medication_subtitle, result_layout, status_photo, use_chips
-from medclue_mobile.ui.theme import SCREEN_MARGIN
+from medclue_mobile.ui.theme import SCREEN_MARGIN, SECTION_SPACING
 
 
 class IdentificationResultScreen(ft.Container):
@@ -18,7 +18,7 @@ class IdentificationResultScreen(ft.Container):
         on_save: Callable[[Medication, list[str]], Awaitable[None]],
         on_identify: Callable[[], Awaitable[None]],
     ):
-        super().__init__(expand=True, padding=SCREEN_MARGIN)
+        super().__init__(expand=True, padding=ft.Padding.symmetric(horizontal=SCREEN_MARGIN))
         if not isinstance(result, dict) or result.get("status") != "verified":
             raise ValueError("A confirmed identification result is required.")
         medication = result.get("medication")
@@ -50,7 +50,8 @@ class IdentificationResultScreen(ft.Container):
         if self._official_uses:
             controls.extend([ft.Text("What is it used for?", theme_style=ft.TextThemeStyle.TITLE_MEDIUM), use_chips(self._official_uses, full_text=True)])
 
-        self.content = result_layout(controls, [self._save_button, self._identify_button])
+        self.content = result_layout(controls, [self._save_button, self._identify_button],
+                                     action_spacing=SECTION_SPACING)
 
     async def _identify(self, event: ft.Event) -> None:
         if self._opening_form:

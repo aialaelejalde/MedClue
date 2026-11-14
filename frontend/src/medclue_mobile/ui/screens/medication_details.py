@@ -7,10 +7,10 @@ import flet as ft
 
 from medclue_mobile.cabinet import MedicationCabinet
 from medclue_mobile.medications import Medication, validate_medication
-from medclue_mobile.ui.components import action_button, information_row, medication_name, medication_photo, medication_subtitle, soft_card, soft_section, use_chips
+from medclue_mobile.ui.components import DeviceDate, action_button, information_row, medication_name, medication_photo, medication_subtitle, soft_section, use_chips
 from medclue_mobile.ui.dialogs import delete_medication_with_confirmation
 from medclue_mobile.ui.medication_form import (AMOUNT_UNIT_LABELS, FOOD_LABELS, FREQUENCY_LABELS, TREATMENT_END_LABELS)
-from medclue_mobile.ui.theme import BACKGROUND_COLOR, CARD_SPACING, CONTENT_PADDING, SCREEN_MARGIN
+from medclue_mobile.ui.theme import BACKGROUND_COLOR, CARD_SPACING, CONTENT_PADDING, SCREEN_MARGIN, TEXT_COLOR
 
 
 class MedicationDetailsScreen(ft.Container):
@@ -21,7 +21,7 @@ class MedicationDetailsScreen(ft.Container):
         on_edit: Callable[[int], Awaitable[None]],
         on_deleted: Callable[[], Awaitable[None]],
     ):
-        super().__init__(expand=True, padding=SCREEN_MARGIN)
+        super().__init__(expand=True, padding=ft.Padding.symmetric(horizontal=SCREEN_MARGIN))
         validate_medication(medication)
         if medication.id is None:
             raise ValueError("Medication details require a saved record.")
@@ -34,7 +34,7 @@ class MedicationDetailsScreen(ft.Container):
         self._deleted = False
         self._edit_button = action_button("Edit medication", self._edit, icon=ft.Icons.EDIT_OUTLINED)
         self._delete_button = action_button("Delete medication", self._delete, icon=ft.Icons.DELETE_OUTLINE, kind="danger")
-        self.content = ft.SafeArea(
+        self.content = ft.SafeArea(avoid_intrusions_top=False, avoid_intrusions_bottom=False,
             content=ft.Column(
                 controls=[
                     ft.ListView(
@@ -43,6 +43,7 @@ class MedicationDetailsScreen(ft.Container):
                         ],
                         spacing=CARD_SPACING,
                         expand=True,
+                        padding=ft.Padding.symmetric(vertical=SCREEN_MARGIN),
                     ),
                 ],
                 spacing=CARD_SPACING,
@@ -53,11 +54,11 @@ class MedicationDetailsScreen(ft.Container):
 
     def _saved_information(self) -> list[ft.Control]:
         medication = self._medication
-        controls = [soft_card(ft.Column([
+        controls = [soft_section("Medication", [
             medication_photo(medication.photo, height=180, aspect_ratio=4 / 3, fit=ft.BoxFit.COVER),
             medication_name(medication.name, theme_style=ft.TextThemeStyle.TITLE_LARGE),
             medication_subtitle(medication.strength, medication.form),
-        ], spacing=CARD_SPACING, tight=True, horizontal_alignment=ft.CrossAxisAlignment.STRETCH))]
+        ])]
         if medication.uses:
             controls.append(soft_section("Prescribed for", [use_chips(medication.uses, full_text=True)]))
 
@@ -92,12 +93,12 @@ class MedicationDetailsScreen(ft.Container):
 
         dates = []
         if medication.prescription_date is not None:
-            dates.append(information_row("Prescribed on", medication.prescription_date.isoformat()))
+            dates.append(information_row("Prescribed on", DeviceDate(medication.prescription_date)))
 
         if medication.treatment_end is not None:
             treatment_end = medication.treatment_end
             text = (
-                treatment_end.end_date.isoformat()
+                DeviceDate(treatment_end.end_date)
                 if treatment_end.type == "date" else TREATMENT_END_LABELS[treatment_end.type]
             )
             dates.append(information_row("End date", text))
@@ -105,7 +106,7 @@ class MedicationDetailsScreen(ft.Container):
         if medication.notes and medication.notes.strip():
             dates.extend([
                 ft.Text("Notes", theme_style=ft.TextThemeStyle.BODY_MEDIUM),
-                ft.Container(content=ft.Text(medication.notes), bgcolor=BACKGROUND_COLOR, padding=CONTENT_PADDING, border_radius=12),
+                ft.Container(content=ft.Text(medication.notes, color=TEXT_COLOR), bgcolor=BACKGROUND_COLOR, padding=CONTENT_PADDING, border_radius=12),
             ])
         if dates:
             controls.append(soft_section("Dates & notes", dates))

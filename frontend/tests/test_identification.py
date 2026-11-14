@@ -42,7 +42,7 @@ def test_completed_results_are_kept_without_automatic_requests(identification, s
     assert context.session.photo == b"original photo"
     assert context.session.media_type == "image/png"
     assert not context.session.is_running
-    assert not context.session.can_retry
+    assert context.session.can_retry == (status == "not_identified")
     context.api.identify.assert_awaited_once_with(b"original photo", "image/png")
     context.api.verify.assert_not_awaited()
 
