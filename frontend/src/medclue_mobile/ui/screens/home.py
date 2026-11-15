@@ -113,7 +113,7 @@ class HomeScreen(ft.Container):
         try:
             medications = self._cabinet.list_medications(query, self._sort_order)
             total = len(self._cabinet.list_medications()) if query.strip() else len(medications)
-            self._count.value = f"{total} medications"
+            self._count.value = f"{total} medication{'s' if total != 1 else ''}"
             self._sort_button.items = [
                 self._sort_item("recently_added", "Recently added"),
                 self._sort_item("name_az", "Name A-Z"),

@@ -19,7 +19,7 @@ class OfficialUsesProcessor:
     def indications(self) -> str | None:
         return self._indications
 
-    async def get_uses(self) -> list[str]:
+    async def get_and_translate_uses(self) -> list[str]:
         """Get official indications and translate them into English."""
         if self._indications is None:
             self.current_step = "official_uses_retrieval"

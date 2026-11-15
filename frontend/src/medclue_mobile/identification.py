@@ -98,7 +98,7 @@ class IdentificationSession:
         self._selection = deepcopy(selection)
         operation = (
             self._api_client.identify(self._photo, self._media_type)
-            if selection is None else self._api_client.verify(**deepcopy(selection))
+            if selection is None else self._api_client.send_selection_or_retry(**deepcopy(selection))
         )
         task = asyncio.create_task(operation)
         self._task = task

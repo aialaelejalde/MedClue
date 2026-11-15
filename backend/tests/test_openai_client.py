@@ -26,7 +26,11 @@ def openai_client(monkeypatch):
         "medclue_api.openai_client.AsyncOpenAI",
         Mock(return_value=sdk_client),
     )
-    settings = Settings(openai_api_key="test-key", openai_model="test-model")
+    settings = Settings(
+        openai_api_key="test-key",
+        openai_model="test-model",
+        retry_token_secret="test-retry-secret-with-at-least-32-characters",
+    )
     return OpenAIClient(settings), parse
 
 
@@ -89,7 +93,7 @@ def test_image_analysis_returns_the_received_candidates(openai_client):
     "status, has_result",
     [("incomplete", True), ("incomplete", False), ("completed", False)],
 )
-def test_incomplete_openai_responses_are_rejected(openai_client, status, has_result):
+def test_incomplete_image_analysis_responses_are_rejected(openai_client, status, has_result):
     client, parse = openai_client
     parse.return_value = SimpleNamespace(
         status=status,
@@ -99,10 +103,30 @@ def test_incomplete_openai_responses_are_rejected(openai_client, status, has_res
     with pytest.raises(ValueError, match="complete image analysis result"):
         asyncio.run(client.analyze_image(b"package photo"))
 
-    parse.return_value.output_parsed = OfficialUsesResult(official_uses=[]) if has_result else None
+
+@pytest.mark.parametrize(
+    "status, has_result",
+    [("incomplete", True), ("incomplete", False), ("completed", False)],
+)
+def test_incomplete_translation_responses_are_rejected(openai_client, status, has_result):
+    client, parse = openai_client
+    parse.return_value = SimpleNamespace(
+        status=status,
+        output_parsed=OfficialUsesResult(official_uses=[]) if has_result else None,
+    )
 
     with pytest.raises(ValueError, match="complete official uses result"):
         asyncio.run(client.translate_official_uses("Official indication"))
+
+
+@pytest.mark.parametrize("indications", [None, 123])
+def test_non_text_indications_are_rejected_without_calling_openai(openai_client, indications):
+    client, parse = openai_client
+
+    with pytest.raises(ValueError, match="Official indications must be text"):
+        asyncio.run(client.translate_official_uses(indications))
+
+    parse.assert_not_awaited()
 
 
 @pytest.mark.parametrize("indications", ["", " \t\n "])

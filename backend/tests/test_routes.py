@@ -26,7 +26,7 @@ def api():
     )
     service = SimpleNamespace(
         identify=AsyncMock(return_value=result),
-        verify=AsyncMock(return_value=result),
+        process_selection_or_retry=AsyncMock(return_value=result),
     )
     app = FastAPI()
     app.state.identification_service = service
@@ -41,7 +41,7 @@ def test_identify_sends_original_photo_to_service_and_returns_json(api):
     assert response.status_code == 200
     assert response.json() == api.result.model_dump(mode="json")
     api.service.identify.assert_awaited_once_with(b"original photo", "image/png")
-    api.service.verify.assert_not_awaited()
+    api.service.process_selection_or_retry.assert_not_awaited()
 
 
 @pytest.mark.parametrize(
@@ -90,7 +90,7 @@ def test_verify_accepts_each_selection_without_image_analysis(api, selection):
 
     assert response.status_code == 200
     assert response.json() == api.result.model_dump(mode="json")
-    api.service.verify.assert_awaited_once_with(VerifyRequest.model_validate(selection))
+    api.service.process_selection_or_retry.assert_awaited_once_with(VerifyRequest.model_validate(selection))
     api.service.identify.assert_not_awaited()
 
 
@@ -101,7 +101,7 @@ def test_verify_rejects_missing_or_conflicting_selections(api, selection):
     response = api.client.post("/verify", json=selection)
 
     assert response.status_code == 422
-    api.service.verify.assert_not_awaited()
+    api.service.process_selection_or_retry.assert_not_awaited()
 
 
 @pytest.mark.parametrize(
@@ -113,7 +113,7 @@ def test_verify_rejects_missing_or_conflicting_selections(api, selection):
     ],
 )
 def test_verify_converts_selection_errors_to_http_errors(api, error, status_code):
-    api.service.verify.side_effect = error
+    api.service.process_selection_or_retry.side_effect = error
 
     response = api.client.post("/verify", json={"retry_token": "token"})
 
@@ -135,13 +135,17 @@ def test_identification_states_remain_process_results(api, status):
     assert response.json() == result.model_dump(mode="json")
 
 
-def test_service_must_be_initialized(api):
-    del api.app.state.identification_service
+@pytest.mark.parametrize("service_state", ["missing", None])
+def test_service_must_be_initialized(api, service_state):
+    if service_state == "missing":
+        del api.app.state.identification_service
+    else:
+        api.app.state.identification_service = None
 
     response = api.client.post("/verify", json={"national_code": "000010"})
 
     assert response.status_code == 503
-    api.service.verify.assert_not_awaited()
+    api.service.process_selection_or_retry.assert_not_awaited()
 
 
 @pytest.mark.parametrize("endpoint", ["/identify", "/verify"])
@@ -160,7 +164,7 @@ def test_disconnect_cancels_active_processing(api, monkeypatch, endpoint):
         return bool(started)
 
     api.service.identify.side_effect = blocked
-    api.service.verify.side_effect = blocked
+    api.service.process_selection_or_retry.side_effect = blocked
     monkeypatch.setattr(Request, "is_disconnected", is_disconnected)
 
     if endpoint == "/identify":

@@ -1,4 +1,4 @@
-"""Run the identification steps within the time limit and handle cancellation."""
+"""Manage medication identification, verification, and error handling."""
 
 import asyncio
 from dataclasses import dataclass
@@ -39,8 +39,8 @@ class IdentificationService:
 
         return await self._run(_IdentificationProgress(), photo, media_type)
 
-    async def verify(self, request: VerifyRequest) -> IdentificationResponse:
-        """Check a user selection or resume a signed retry without image analysis."""
+    async def process_selection_or_retry(self, request: VerifyRequest) -> IdentificationResponse:
+        """Process a user selection or resume a signed retry without image analysis."""
         if request.retry_token is not None:
             state = self._token_manager.read_token(request.retry_token)
             progress = _IdentificationProgress(
@@ -112,7 +112,7 @@ class IdentificationService:
             )
 
         try:
-            uses = await progress.uses_processor.get_uses()
+            uses = await progress.uses_processor.get_and_translate_uses()
         except (TimeoutError, httpx.HTTPError, OpenAIError, ValueError):
             uses = []
 

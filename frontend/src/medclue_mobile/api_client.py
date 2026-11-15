@@ -1,4 +1,4 @@
-"""Send photos and selected candidates to the backend."""
+"""Send photos, medication selections, and retry tokens to the backend."""
 
 import asyncio
 
@@ -54,7 +54,8 @@ class MedClueApiClient:
 
         return await self._post("identify", files={"photo": ("package", photo, media_type)})
 
-    async def verify(self, *, candidate: dict | None = None, national_code: str | None = None, retry_token: str | None = None) -> dict:
+    async def send_selection_or_retry(self, *, candidate: dict | None = None, national_code: str | None = None, retry_token: str | None = None) -> dict:
+        """Send a medication selection or retry token to POST /verify."""
         selection = {
             key: value
             for key, value in (

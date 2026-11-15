@@ -5,7 +5,7 @@ import re
 import httpx
 
 from medclue_api.config import CIMA_BASE_URL, IDENTIFICATION_TIMEOUT_SECONDS
-from medclue_api.matching import MASS_UNITS, group_presentations, matches_search_name, normalize_name
+from medclue_api.matching import MASS_UNITS, matches_search_name, normalize_name
 from medclue_api.schemas import CimaPresentation, MedicationCandidate
 
 
@@ -18,6 +18,7 @@ class CimaClient:
         )
 
     async def search_presentations(self, name: str) -> list[CimaPresentation]:
+        """Search CIMA for medications by name and return their presentations."""
         name = normalize_name(_required_text(name, "Medication name"))
         medications = await self._search_medications(name)
         presentations = {}
@@ -35,7 +36,7 @@ class CimaClient:
                     raise ValueError("CIMA returned conflicting presentation data.")
                 presentations[presentation.national_code] = presentation
 
-        return group_presentations(list(presentations.values()))
+        return list(presentations.values())
 
     async def get_presentation(self, national_code: str) -> CimaPresentation | None:
         national_code = _required_text(national_code, "National code")
@@ -78,7 +79,7 @@ class CimaClient:
         return data
 
     async def _search_medications(self, name: str) -> list[dict]:
-        """Read every page so omitted results cannot cause a false unique match."""
+        """Get all pages of CIMA search results to avoid missing possible matches."""
         medications = []
         page = 1
         total = None
@@ -117,6 +118,7 @@ class CimaClient:
 
 
 def _medication_candidate(medication: dict) -> MedicationCandidate:
+    """Get the name, strength, and form of a medication from CIMA data."""
     name = _required_text(medication.get("nombre"), "Medication name")
     strength = _optional_text(medication.get("dosis"))
     if strength is not None:
@@ -130,6 +132,7 @@ def _medication_candidate(medication: dict) -> MedicationCandidate:
 
 
 def _medication_presentations(medication: dict) -> list[CimaPresentation]:
+    """Get all versions of a medication with different national codes from CIMA data."""
     candidate = _medication_candidate(medication)
     registration_number = _required_text(medication.get("nregistro"), "Registration number")
     ingredients = medication.get("principiosActivos", [])
@@ -154,7 +157,7 @@ def _medication_presentations(medication: dict) -> list[CimaPresentation]:
 
 
 def _normalize_strength(strength: str) -> str:
-    """Expand CIMA mass combinations such as '400/240 mg/mg' without guessing units."""
+    """Expand CIMA mass combinations such as '400/240 mg/mg'."""
     match = re.fullmatch(
         r"([0-9]+(?:[.,][0-9]+)?(?:/[0-9]+(?:[.,][0-9]+)?)+)\s+([a-zμ]+(?:/[a-zμ]+)+)",
         normalize_name(strength),

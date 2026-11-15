@@ -22,12 +22,8 @@ MASS_UNITS = {
 VOLUME_UNITS = {"ml": Fraction(1), "l": Fraction(1000)}
 FORM_NAMES = {
     "tablet": ("tablet", "tablets", "comprimido", "comprimidos"),
-    "coated_tablet": (
-        "coated tablet", "coated tablets", "comprimido recubierto", "comprimidos recubiertos",
-    ),
-    "sugar_coated_tablet": (
-        "sugar-coated tablet", "sugar-coated tablets", "gragea", "grageas",
-    ),
+    "coated_tablet": ("coated tablet", "coated tablets", "comprimido recubierto", "comprimidos recubiertos"),
+    "sugar_coated_tablet": ("sugar-coated tablet", "sugar-coated tablets", "gragea", "grageas"),
     "film_coated_tablet": (
         "film-coated tablet", "film-coated tablets",
         "film coated tablet", "film coated tablets",
@@ -107,7 +103,7 @@ def matches_search_name(name: str, medication: MedicationCandidate) -> bool:
     if compare_names(search_name, medication_name):
         return True
 
-    # Keep possible matches when missing or unsupported details leave a numeric suffix.
+    # CIMA names may contain strength or form details. Compare the name before each number to keep these as possible matches.
     return any(
         compare_names(search_name, medication_name[:number.start()])
         for number in re.finditer(r"(?<!\S)[0-9]", medication_name)
@@ -115,7 +111,7 @@ def matches_search_name(name: str, medication: MedicationCandidate) -> bool:
 
 
 def group_presentations(presentations: list[CimaPresentation]) -> list[CimaPresentation]:
-    """Keep one national code per medication, ignoring package size."""
+    """Group identical CIMA presentations, keeping only one when they differ by package size."""
     grouped = {}
     for presentation in presentations:
         key = (
@@ -133,8 +129,8 @@ def compare_strengths(first: str | None, second: str | None, *, active_ingredien
     """Return True for equivalent strengths, False for different strengths, or None if uncertain."""
     if not first or not second:
         return None
-    first_values = _parse_described_strength(first, active_ingredients)
-    second_values = _parse_described_strength(second, active_ingredients)
+    first_values = _parse_strength_with_ingredient_name(first, active_ingredients)
+    second_values = _parse_strength_with_ingredient_name(second, active_ingredients)
     if first_values is None or second_values is None:
         return None
     return first_values == second_values
@@ -150,7 +146,7 @@ def compare_forms(first: str | None, second: str | None) -> bool | None:
         return None
     if first_form == second_form:
         return True
-    # Allow grammatical plurals without removing formulation or route qualifiers.
+    # Allow singular and plural forms, but keep differences in formulation and administration route.
     first_words, second_words = first_form.split(), second_form.split()
     if len(first_words) == len(second_words) and all(
         first == second or first + "s" == second or second + "s" == first
@@ -175,7 +171,7 @@ def find_presentation_matches(candidate: MedicationCandidate, presentations: lis
             and not matches_search_name(candidate.name, presentation)
         ):
             continue
-        if _compare_presentation(candidate, presentation) is False:
+        if _compare_presentation_details(candidate, presentation) is False:
             continue
         matches.append(presentation)
 
@@ -185,14 +181,14 @@ def find_presentation_matches(candidate: MedicationCandidate, presentations: lis
         presentation = matches[0]
         if (
             candidate_name == _name_key(presentation)
-            and _compare_presentation(candidate, presentation) is True
+            and _compare_presentation_details(candidate, presentation) is True
         ):
             result.verified = presentation
     return result
 
 
-def _supports_named_form(structured: str | None, named: str | None) -> bool:
-    """Allow a generic name only when a structured form supplies the missing detail."""
+def _form_field_matches_name(structured: str | None, named: str | None) -> bool:
+    """Check that the form in the medication name does not contradict the separate form field."""
     if compare_forms(structured, named) is True:
         return True
     if not structured or not named:
@@ -206,7 +202,7 @@ def _supports_named_form(structured: str | None, named: str | None) -> bool:
 
 
 def _name_conflicts_with_fields(medication: MedicationCandidate, parts: _NameParts | None) -> bool:
-    """Keep inconsistent records as uncertain instead of using them to prove uniqueness."""
+    """Check if the strength or form in the medication name conflicts with its separate fields. Keep inconsistent records as uncertain."""
     if parts is None:
         return False
     ingredients = medication.active_ingredients if isinstance(medication, CimaPresentation) else None
@@ -216,12 +212,12 @@ def _name_conflicts_with_fields(medication: MedicationCandidate, parts: _NamePar
         return False
     named_form, structured_form = _form_key(parts.form), _form_key(medication.form)
     if named_form in FORM_NAMES and structured_form in FORM_NAMES:
-        return not _supports_named_form(medication.form, parts.form)
+        return not _form_field_matches_name(medication.form, parts.form)
     return False
 
 
-def _compare_presentation(candidate: MedicationCandidate, presentation: CimaPresentation) -> bool | None:
-    """Require positive field evidence and check all details present in either name."""
+def _compare_presentation_details(candidate: MedicationCandidate, presentation: CimaPresentation) -> bool | None:
+    """Compare strength and form between an AI candidate and a CIMA presentation. Return True if they match, False if they differ, or None if uncertain."""
     candidate_parts = _split_medication_name(candidate.name)
     official_parts = _split_medication_name(presentation.name)
     if _name_conflicts_with_fields(candidate, candidate_parts) or _name_conflicts_with_fields(presentation, official_parts):
@@ -238,24 +234,25 @@ def _compare_presentation(candidate: MedicationCandidate, presentation: CimaPres
 
     if candidate_parts is not None and (
         compare_strengths(candidate_parts.strength, candidate.strength) is not True
-        or not _supports_named_form(candidate.form, candidate_parts.form)
+        or not _form_field_matches_name(candidate.form, candidate_parts.form)
     ):
         return None
 
-    if official_parts is not None:
-        if form_match is not True and _form_key(official_parts.form) in FORM_FAMILIES.values():
-            return None
-        if (
-            compare_strengths(candidate.strength, official_parts.strength) is not True
-            or not (
-                compare_forms(candidate.form, official_parts.form) is True
-                or (form_match is True and _supports_named_form(candidate.form, official_parts.form))
-            )
-            or not _supports_named_form(presentation.form, official_parts.form)
-        ):
-            return None
-        return True
-    return True if form_match is True else None
+    if official_parts is None:
+        return True if form_match is True else None
+
+    if form_match is not True and _form_key(official_parts.form) in FORM_FAMILIES.values():
+        return None
+    if (
+        compare_strengths(candidate.strength, official_parts.strength) is not True
+        or not (
+            compare_forms(candidate.form, official_parts.form) is True
+            or (form_match is True and _form_field_matches_name(candidate.form, official_parts.form))
+        )
+        or not _form_field_matches_name(presentation.form, official_parts.form)
+    ):
+        return None
+    return True
 
 
 def _flexible_name_key(name: str) -> str:
@@ -273,7 +270,7 @@ def _form_key(form: str) -> str:
 
 
 def _name_key(medication: MedicationCandidate) -> str:
-    """Use a matching structured strength to locate the end of the medication name."""
+    """Get the medication name without its strength and form, when possible."""
     name = normalize_name(medication.name)
 
     parts = _split_medication_name(name)
@@ -290,7 +287,7 @@ def _name_key(medication: MedicationCandidate) -> str:
 
 
 def _split_medication_name(name: str) -> _NameParts | None:
-    """Separate a supported, complete strength from its entire form suffix."""
+    """Separate the medication name into its name, strength, and form when possible."""
     name = normalize_name(name)
     for number in re.finditer(r"(?<!\S)[0-9]", name):
         if number.start() == 0:
@@ -310,8 +307,8 @@ def _split_medication_name(name: str) -> _NameParts | None:
     return None
 
 
-def _parse_described_strength(strength: str, active_ingredients: list[str] | None) -> list[tuple[str, Fraction]] | None:
-    """Remove a single ingredient label only when CIMA independently supplies its exact name."""
+def _parse_strength_with_ingredient_name(strength: str, active_ingredients: list[str] | None) -> list[tuple[str, Fraction]] | None:
+    """Parse a strength that may include the name of an active ingredient."""
     parsed = _parse_strength(strength)
     if parsed is not None or not active_ingredients or len(active_ingredients) != 1:
         return parsed
@@ -325,7 +322,7 @@ def _parse_described_strength(strength: str, active_ingredients: list[str] | Non
 
 
 def _parse_strength(strength: str) -> list[tuple[str, Fraction]] | None:
-    """Convert medication strengths into comparable values, including combinations and concentrations."""
+    """Split a complete medication strength into comparable components."""
     components = []
     for component in normalize_name(strength).split("+"):
         parsed = _parse_component(component.strip())
@@ -348,7 +345,7 @@ def _parse_strength(strength: str) -> list[tuple[str, Fraction]] | None:
 
 
 def _parse_component(component: str) -> tuple[str, Fraction] | None:
-    """Convert a medication strength into a mass or mass-per-volume value using equivalent units."""
+    """Convert one strength component into a comparable mass or concentration."""
     parts = component.split("/")
     if len(parts) > 2:
         return None

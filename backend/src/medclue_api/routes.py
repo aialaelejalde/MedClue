@@ -1,4 +1,4 @@
-"""Receive identify and verify requests and return JSON results."""
+"""Receive /identify and /verify requests and return JSON results."""
 
 import asyncio
 from collections.abc import Coroutine
@@ -11,6 +11,7 @@ from medclue_api.schemas import IdentificationResponse, VerifyRequest
 
 
 MAX_PHOTO_BYTES = 15 * 1024 * 1024
+DISCONNECT_CHECK_INTERVAL_SECONDS = 0.1
 
 router = APIRouter()
 
@@ -44,14 +45,14 @@ async def identify(
         await photo.close()
 
 
-@router.post("/verify", response_model=IdentificationResponse)
-async def verify(
+@router.post("/verify", response_model=IdentificationResponse, name="verify")
+async def handle_selection_or_retry(
     request: Request,
     selection: VerifyRequest,
     service: Annotated[IdentificationService, Depends(get_identification_service)],
 ) -> IdentificationResponse:
     try:
-        return await _run_until_disconnected(request, service.verify(selection))
+        return await _run_until_disconnected(request, service.process_selection_or_retry(selection))
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     except LookupError as error:
@@ -65,7 +66,7 @@ async def _run_until_disconnected(request: Request, operation: Coroutine[Any, An
         while not task.done():
             if await request.is_disconnected():
                 raise HTTPException(status_code=499, detail="Identification cancelled.")
-            await asyncio.wait({task}, timeout=0.1)
+            await asyncio.wait({task}, timeout=DISCONNECT_CHECK_INTERVAL_SECONDS)
         return await task
     finally:
         if not task.done():

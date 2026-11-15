@@ -43,8 +43,7 @@ def backend(monkeypatch):
     return SimpleNamespace(settings=settings, medication=medication, cima=cima, openai=openai)
 
 
-def test_startup_connects_both_routes_and_shutdown_closes_clients(backend):
-    main.load_settings.assert_not_called()
+def test_startup_initializes_clients_and_connects_both_routes(backend):
     with TestClient(main.app) as client:
         photo_result = client.post("/identify", files={"photo": ("package.jpg", b"photo", "image/jpeg")})
         verified_result = client.post("/verify", json={"national_code": "000010"})
@@ -59,6 +58,10 @@ def test_startup_connects_both_routes_and_shutdown_closes_clients(backend):
         main.OpenAIClient.assert_called_once_with(backend.settings)
         backend.openai.analyze_image.assert_awaited_once_with(b"photo", "image/jpeg")
         backend.cima.get_presentation.assert_awaited_once_with("000010")
+
+
+def test_shutdown_closes_clients_and_clears_service(backend):
+    with TestClient(main.app):
         backend.cima.close.assert_not_awaited()
         backend.openai.close.assert_not_awaited()
 

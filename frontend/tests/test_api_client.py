@@ -75,7 +75,7 @@ def test_verify_sends_only_the_selected_data(api_client, selection):
     client, requests, responses = api_client
     responses.append(httpx.Response(200, json={"status": "not_identified"}))
 
-    asyncio.run(client.verify(**selection))
+    asyncio.run(client.send_selection_or_retry(**selection))
 
     assert str(requests[0].url) == "https://medclue.test/verify"
     assert json.loads(requests[0].content) == selection
@@ -107,7 +107,7 @@ def test_http_errors_keep_the_backend_message_and_status(api_client, status_code
         if status_code == 413:
             asyncio.run(client.identify(b"photo"))
         else:
-            asyncio.run(client.verify(retry_token="token"))
+            asyncio.run(client.send_selection_or_retry(retry_token="token"))
 
     assert error.value.status_code == status_code
     assert len(requests) == 1
@@ -189,7 +189,7 @@ def test_personal_record_fields_cannot_be_sent_as_a_candidate(api_client):
     candidate = {"name": "Example", "strength": None, "form": None, "notes": "Private note"}
 
     with pytest.raises(ValueError, match="only name, strength, and form"):
-        asyncio.run(client.verify(candidate=candidate))
+        asyncio.run(client.send_selection_or_retry(candidate=candidate))
 
     assert requests == []
 
@@ -198,7 +198,7 @@ def test_conflicting_selections_are_rejected_without_a_request(api_client):
     client, requests, _ = api_client
 
     with pytest.raises(ValueError, match="Send one"):
-        asyncio.run(client.verify(national_code="000010", retry_token="token"))
+        asyncio.run(client.send_selection_or_retry(national_code="000010", retry_token="token"))
 
     assert requests == []
 

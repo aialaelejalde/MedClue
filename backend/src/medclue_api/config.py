@@ -9,13 +9,14 @@ from dotenv import load_dotenv
 CIMA_BASE_URL = "https://cima.aemps.es/cima/rest/"
 IDENTIFICATION_TIMEOUT_SECONDS = 40
 RETRY_TOKEN_MAX_AGE_SECONDS = 15 * 60
+MIN_RETRY_TOKEN_SECRET_LENGTH = 32
 
 
 @dataclass(frozen=True)
 class Settings:
     openai_api_key: str = field(repr=False)
     openai_model: str
-    retry_token_secret: str = field(default="", repr=False)
+    retry_token_secret: str = field(repr=False)
 
 
 def load_settings() -> Settings:
@@ -30,8 +31,8 @@ def load_settings() -> Settings:
         raise ValueError("OPENAI_MODEL cannot be blank.")
 
     retry_token_secret = os.getenv("RETRY_TOKEN_SECRET", "").strip()
-    if len(retry_token_secret) < 32:
-        raise ValueError("RETRY_TOKEN_SECRET must contain at least 32 characters.")
+    if len(retry_token_secret) < MIN_RETRY_TOKEN_SECRET_LENGTH:
+        raise ValueError(f"RETRY_TOKEN_SECRET must contain at least {MIN_RETRY_TOKEN_SECRET_LENGTH} characters.")
 
     return Settings(
         openai_api_key=openai_api_key,

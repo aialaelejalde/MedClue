@@ -35,7 +35,7 @@ def official_uses():
 def test_official_indications_are_retrieved_and_translated(official_uses):
     processor, cima_client, openai_client = official_uses
 
-    uses = asyncio.run(processor.get_uses())
+    uses = asyncio.run(processor.get_and_translate_uses())
 
     assert uses == ["Supported use"]
     cima_client.get_official_indications.assert_awaited_once_with("000001")
@@ -47,7 +47,7 @@ def test_empty_indications_skip_translation(official_uses, indications):
     processor, cima_client, openai_client = official_uses
     cima_client.get_official_indications.return_value = indications
 
-    assert asyncio.run(processor.get_uses()) == []
+    assert asyncio.run(processor.get_and_translate_uses()) == []
     openai_client.translate_official_uses.assert_not_awaited()
 
 
@@ -55,7 +55,7 @@ def test_empty_translation_returns_no_uses(official_uses):
     processor, _, openai_client = official_uses
     openai_client.translate_official_uses.return_value = OfficialUsesResult(official_uses=[])
 
-    assert asyncio.run(processor.get_uses()) == []
+    assert asyncio.run(processor.get_and_translate_uses()) == []
 
 
 def test_retrieval_failure_can_be_retried(official_uses):
@@ -66,11 +66,11 @@ def test_retrieval_failure_can_be_retried(official_uses):
     ]
 
     with pytest.raises(httpx.ConnectError):
-        asyncio.run(processor.get_uses())
+        asyncio.run(processor.get_and_translate_uses())
 
     assert processor.current_step == "official_uses_retrieval"
     openai_client.translate_official_uses.assert_not_awaited()
-    assert asyncio.run(processor.get_uses()) == ["Supported use"]
+    assert asyncio.run(processor.get_and_translate_uses()) == ["Supported use"]
     assert cima_client.get_official_indications.await_count == 2
 
 
@@ -86,10 +86,10 @@ def test_translation_retry_reuses_retrieved_indications(official_uses, error):
     ]
 
     with pytest.raises(type(error)):
-        asyncio.run(processor.get_uses())
+        asyncio.run(processor.get_and_translate_uses())
 
     assert processor.current_step == "uses_translation"
-    assert asyncio.run(processor.get_uses()) == ["Supported use"]
+    assert asyncio.run(processor.get_and_translate_uses()) == ["Supported use"]
     cima_client.get_official_indications.assert_awaited_once()
     assert openai_client.translate_official_uses.await_count == 2
 
@@ -99,7 +99,7 @@ def test_cancellation_stops_before_translation(official_uses):
     cima_client.get_official_indications.side_effect = asyncio.CancelledError()
 
     with pytest.raises(asyncio.CancelledError):
-        asyncio.run(processor.get_uses())
+        asyncio.run(processor.get_and_translate_uses())
 
     assert processor.current_step == "official_uses_retrieval"
     openai_client.translate_official_uses.assert_not_awaited()

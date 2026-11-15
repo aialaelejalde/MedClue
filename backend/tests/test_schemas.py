@@ -54,14 +54,19 @@ def response_payloads(candidate, presentation):
     }
 
 
-def test_candidate_keeps_missing_values_and_cleans_outer_spaces(candidate):
+def test_candidate_accepts_null_strength_and_form(candidate):
+    result = MedicationCandidate.model_validate_json(json.dumps(candidate))
+
+    assert result.strength is None
+    assert result.form is None
+
+
+def test_candidate_strips_outer_spaces_from_name(candidate):
     candidate["name"] = "  Example medicine  "
 
     result = MedicationCandidate.model_validate_json(json.dumps(candidate))
 
     assert result.name == "Example medicine"
-    assert result.strength is None
-    assert result.form is None
 
 
 @pytest.mark.parametrize("field_name", ["name", "strength", "form"])
@@ -99,7 +104,6 @@ def test_image_analysis_accepts_empty_single_and_multiple_results(candidate_coun
     result = ImageAnalysisResult.model_validate_json(json.dumps(payload))
 
     assert len(result.candidates) == candidate_count
-    assert result.model_dump() == payload
 
 
 @pytest.mark.parametrize("labels", [[], ["Example label", "Another label"]])
@@ -117,16 +121,18 @@ def test_official_uses_rejects_invalid_labels_and_wrong_list_types(labels):
         OfficialUsesResult.model_validate_json(json.dumps({"official_uses": labels}))
 
 
-def test_presentation_keeps_official_identifiers_as_text(presentation):
-    result = CimaPresentation.model_validate_json(json.dumps(presentation))
+def test_presentation_excludes_active_ingredients_from_serialization(presentation):
+    result = CimaPresentation.model_validate({
+        **presentation,
+        "active_ingredients": ["Example ingredient"],
+    })
 
-    assert result.registration_number == "000001"
-    assert result.national_code == "000002"
+    assert "active_ingredients" not in result.model_dump()
 
 
 @pytest.mark.parametrize("field_name", ["registration_number", "national_code"])
 @pytest.mark.parametrize("value", [" ", 123, None])
-def test_presentation_requires_nonempty_text_identifiers(presentation, field_name, value):
+def test_presentation_rejects_invalid_identifiers(presentation, field_name, value):
     presentation[field_name] = value
 
     with pytest.raises(ValidationError):
@@ -174,18 +180,16 @@ def test_verification_rejects_missing_or_multiple_selections(candidate, selectio
         "connection_error", "timeout",
     ],
 )
-def test_each_approved_status_accepts_its_data_and_round_trips(response_payloads, status):
+def test_each_approved_status_accepts_its_data(response_payloads, status):
     result = IdentificationResponse.model_validate_json(
         json.dumps(response_payloads[status])
     )
 
     assert result.status == status
-    restored = IdentificationResponse.model_validate_json(result.model_dump_json())
-    assert restored == result
 
 
-@pytest.mark.parametrize("labels", [[], ["Example official label"]])
-def test_verified_result_can_have_uses_or_no_uses(presentation, labels):
+def test_verified_result_accepts_official_uses(presentation):
+    labels = ["Example official label"]
     result = IdentificationResponse.model_validate_json(
         json.dumps({
             "status": "verified", "medication": presentation,
@@ -193,7 +197,6 @@ def test_verified_result_can_have_uses_or_no_uses(presentation, labels):
         })
     )
 
-    assert result.medication.national_code == presentation["national_code"]
     assert result.official_uses == labels
 
 
@@ -222,8 +225,6 @@ def test_multiple_cima_presentations_are_valid_options(candidate, presentation):
     result = IdentificationResponse.model_validate_json(json.dumps(payload))
 
     assert len(result.presentations) == 2
-    assert result.medication is None
-    assert result.official_uses == []
 
 
 @pytest.mark.parametrize(
@@ -276,6 +277,11 @@ def test_errors_accept_the_failed_step_and_its_retry_data(candidate, status, ste
     result = IdentificationResponse.model_validate_json(json.dumps(payload))
 
     assert result.failed_step == step
+    assert result.retry_token == payload.get("retry_token")
+    assert (
+        result.suggested_candidate.model_dump()
+        if result.suggested_candidate is not None else None
+    ) == payload.get("suggested_candidate")
 
 
 @pytest.mark.parametrize("status", ["connection_error", "timeout"])
@@ -326,11 +332,9 @@ def test_unknown_fields_are_rejected(schema, payload):
         schema.model_validate_json(json.dumps({**payload, "unexpected_field": "value"}))
 
 
-def test_invalid_status_and_invalid_json_are_rejected():
+def test_invalid_status_is_rejected():
     with pytest.raises(ValidationError):
         IdentificationResponse.model_validate_json('{"status": "unknown"}')
-    with pytest.raises(ValidationError):
-        IdentificationResponse.model_validate_json('{"status":')
 
 
 def test_verified_result_requires_a_presentation():

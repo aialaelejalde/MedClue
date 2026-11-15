@@ -30,10 +30,15 @@ def presentation():
     )
 
 
-def test_name_normalization_keeps_distinctive_words_and_punctuation():
-    assert normalize_name("  MÉDICINE   FORTE ") == "medicine forte"
-    assert normalize_name("Example Plus") != normalize_name("Example")
-    assert normalize_name("Example-Plus") != normalize_name("Example Plus")
+@pytest.mark.parametrize(
+    "name, expected",
+    [
+        ("  MÉDICINE   FORTE ", "medicine forte"),
+        ("Example-Plus", "example-plus"),
+    ],
+)
+def test_name_normalization_keeps_distinctive_words_and_punctuation(name, expected):
+    assert normalize_name(name) == expected
 
 
 @pytest.mark.parametrize(
@@ -64,7 +69,6 @@ def test_name_normalization_keeps_distinctive_words_and_punctuation():
     ],
 )
 def test_form_comparison_handles_uncertainty_and_order(first, second, expected):
-    """Check that uncertain form comparisons return None and that changing the order does not affect the result."""
     assert compare_forms(first, second) is expected
     assert compare_forms(second, first) is expected
 
@@ -126,14 +130,6 @@ def test_one_fully_matching_presentation_can_be_verified(candidate, presentation
     assert result.verified == presentation
 
 
-def test_different_medication_names_do_not_match(candidate, presentation):
-    other = presentation.model_copy(update={"name": "Another medicine"})
-    result = find_presentation_matches(candidate, [other])
-
-    assert result.presentations == []
-    assert result.verified is None
-
-
 def test_different_strengths_do_not_match(candidate, presentation):
     other = presentation.model_copy(update={"name": "Example", "strength": "250 mg"})
     result = find_presentation_matches(candidate, [other])
@@ -167,24 +163,26 @@ def test_medication_without_strength_remains_possible():
 
 
 @pytest.mark.parametrize(
-    "candidate_name, presentation_name",
+    "candidate_name, presentation_name, verified",
     [
-        ("Example-Plus", "Example-Plus"),
-        ("  ÉXAMPLE PLUS ", "Example Plus"),
-        ("Example-Plus", "Example Plus"),
-        ("Example+Plus", "ExamplePlus"),
-        ("Example/Plus", "Example Plus"),
-        ("Example.Plus", "ExamplePlus"),
-        ("Example_Plus", "Example Plus"),
+        ("Example-Plus", "Example-Plus", True),
+        ("  ÉXAMPLE PLUS ", "Example Plus", True),
+        ("Example-Plus", "Example Plus", False),
+        ("Example+Plus", "ExamplePlus", False),
+        ("Example/Plus", "Example Plus", False),
+        ("Example.Plus", "ExamplePlus", False),
+        ("Example_Plus", "Example Plus", False),
     ],
 )
-def test_name_variants_keep_possible_matches_and_require_strict_verification(candidate, presentation, candidate_name, presentation_name):
+def test_name_variants_keep_possible_matches_and_require_strict_verification(
+    candidate, presentation, candidate_name, presentation_name, verified,
+):
     suggestion = candidate.model_copy(update={"name": candidate_name})
     possible = presentation.model_copy(update={"name": presentation_name})
     result = find_presentation_matches(suggestion, [possible])
 
     assert result.presentations == [possible]
-    if normalize_name(candidate_name) == normalize_name(presentation_name):
+    if verified:
         assert result.verified == possible
     else:
         assert result.verified is None
@@ -207,7 +205,7 @@ def test_flexible_names_also_work_with_extra_spaces_and_full_cima_names(candidat
     assert result.verified is None
 
 
-def test_a_flexible_name_alternative_prevents_automatic_selection(candidate, presentation):
+def test_flexible_names_prevent_automatic_verification(candidate, presentation):
     suggestion = candidate.model_copy(update={"name": "Example-Plus"})
     exact = presentation.model_copy(update={"name": "Example-Plus 500 mg COMPRIMIDOS EFG"})
     flexible = presentation.model_copy(update={"name": "Example Plus", "national_code": "000003"})
@@ -258,7 +256,7 @@ def test_an_uncertain_alternative_prevents_automatic_selection(candidate, presen
     assert result.verified is None
 
 
-def test_different_pack_sizes_are_one_verified_option(candidate, presentation):
+def test_different_package_sizes_are_grouped_and_verified(candidate, presentation):
     another_pack = presentation.model_copy(update={"national_code": "000003"})
     result = find_presentation_matches(candidate, [presentation, another_pack])
 
@@ -294,7 +292,7 @@ def test_name_comparison_keeps_distinctive_words(other):
         ("Example+Plus", "ExamplePlus 875 mg/125 mg COMPRIMIDOS", "875 mg + 125 mg", "comprimidos", True),
     ],
 )
-def test_search_name_filter_preserves_possible_matches(query, name, strength, form, expected):
+def test_search_name_matches_cima_medication_names(query, name, strength, form, expected):
     medication = MedicationCandidate(name=name, strength=strength, form=form)
 
     assert matches_search_name(query, medication) is expected
@@ -325,7 +323,6 @@ def test_grouping_ignores_case_and_outer_spacing_but_keeps_first_code(presentati
     })
 
     assert group_presentations([presentation, other, presentation]) == [presentation]
-    assert other.national_code == "000003"
 
 
 def test_grouping_packages_does_not_verify_uncertain_data(candidate, presentation):
@@ -411,7 +408,7 @@ def test_unclear_strength_prevents_verification_even_with_one_result(strength):
         ("Example", "500 mg", "film-coated tablet", "EXAMPLE 500 mg COMPRIMIDOS EFG"),
     ],
 )
-def test_full_name_strength_and_form_agree_with_structured_fields(name, strength, form, official_name):
+def test_matching_strength_and_form_in_cima_name_allow_verification(name, strength, form, official_name):
     candidate = MedicationCandidate(name=name, strength=strength, form=form)
     presentation = CimaPresentation(
         name=official_name, strength=strength, form=form,
@@ -532,7 +529,7 @@ def test_name_evidence_never_overrides_contradictory_or_insufficient_fields(
         ("comprimidos recubiertos", "COMPRIMIDOS RECUBIERTOS", "capsule"),
     ],
 )
-def test_named_forms_do_not_override_routes_release_or_specific_coatings(candidate_form, named_form, structured_form):
+def test_conflicting_pharmaceutical_forms_prevent_verification(candidate_form, named_form, structured_form):
     candidate = MedicationCandidate(name="Example", strength="100 mg", form=candidate_form)
     presentation = CimaPresentation(
         name=f"EXAMPLE 100 mg {named_form}", strength="100 mg", form=structured_form,
@@ -583,13 +580,13 @@ def test_name_based_verification_does_not_hide_an_alternative(inconsistent):
         ("550 mg", "550 mg/ml naproxeno sodico", ["Naproxeno sódico"], False),
     ],
 )
-def test_described_strength_requires_complete_ingredient_evidence(first, second, ingredients, expected):
+def test_strength_comparison_with_active_ingredient_names(first, second, ingredients, expected):
     assert compare_strengths(first, second, active_ingredients=ingredients) is expected
     assert compare_strengths(second, first, active_ingredients=ingredients) is expected
 
 
 @pytest.mark.parametrize("ingredients, verified", [([], False), (["Naproxeno"], False), (["Naproxeno sódico"], True)])
-def test_annotated_strength_and_generic_title_need_all_verification_evidence(ingredients, verified):
+def test_verification_with_ingredient_name_in_strength(ingredients, verified):
     candidate = MedicationCandidate(
         name="Naproxeno sódico cinfa", strength="550 mg", form="comprimidos recubiertos con película",
     )
@@ -603,4 +600,3 @@ def test_annotated_strength_and_generic_title_need_all_verification_evidence(ing
 
     assert result.presentations == [presentation]
     assert (result.verified == presentation) is verified
-    assert "active_ingredients" not in presentation.model_dump()

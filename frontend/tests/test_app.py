@@ -121,7 +121,7 @@ def test_app_starts_on_home(app_context):
         assert [item.label for item in app_context.app._navigation.destinations] == ["Home", "Identify", "Add"]
         app_context.session.identify.assert_not_awaited()
         assert card.content.controls[1].content.controls[1].value == "500 mg · tablet"
-        assert app_context.app._screen._count.value == "1 medications"
+        assert app_context.app._screen._count.value == "1 medication"
         assert app_context.app._screen._sort_button.items[0].content.bgcolor == BLUE_SURFACE
     asyncio.run(run())
 

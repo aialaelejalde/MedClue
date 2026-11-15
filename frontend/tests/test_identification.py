@@ -23,7 +23,7 @@ def identification():
     verified = {"status": "verified", "medication": medication, "official_uses": ["Supported use"]}
     api = SimpleNamespace(
         identify=AsyncMock(return_value=verified),
-        verify=AsyncMock(return_value=verified),
+        send_selection_or_retry=AsyncMock(return_value=verified),
     )
     return SimpleNamespace(
         session=IdentificationSession(api), api=api,
@@ -44,7 +44,7 @@ def test_completed_results_are_kept_without_automatic_requests(identification, s
     assert not context.session.is_running
     assert context.session.can_retry == (status == "not_identified")
     context.api.identify.assert_awaited_once_with(b"original photo", "image/png")
-    context.api.verify.assert_not_awaited()
+    context.api.send_selection_or_retry.assert_not_awaited()
 
 
 @pytest.mark.parametrize("option_type", ["candidates", "presentations"])
@@ -59,7 +59,7 @@ def test_selected_match_is_verified_without_repeating_image_analysis(identificat
 
     assert asyncio.run(select()) == context.verified
     expected = {"candidate": option} if option_type == "candidates" else {"national_code": "000010"}
-    context.api.verify.assert_awaited_once_with(**expected)
+    context.api.send_selection_or_retry.assert_awaited_once_with(**expected)
     assert context.api.identify.await_count == 1
     assert context.session.photo == b"photo"
 
@@ -77,7 +77,7 @@ def test_invalid_selection_does_not_change_possible_matches(identification, inde
 
     asyncio.run(select())
     assert context.session.result == result
-    context.api.verify.assert_not_awaited()
+    context.api.send_selection_or_retry.assert_not_awaited()
 
 
 @pytest.mark.parametrize("step, status", [
@@ -99,7 +99,7 @@ def test_backend_retry_uses_only_the_signed_token(identification, step, status):
         return await context.session.retry()
 
     assert asyncio.run(retry()) == context.verified
-    context.api.verify.assert_awaited_once_with(retry_token="signed-token")
+    context.api.send_selection_or_retry.assert_awaited_once_with(retry_token="signed-token")
     assert context.api.identify.await_count == 1
     assert not context.session.can_retry
 
@@ -123,7 +123,7 @@ def test_local_initial_failure_retries_with_original_photo(identification, error
     assert asyncio.run(retry()) == context.verified
     assert context.api.identify.await_count == 2
     assert all(call.args == (b"same photo", "image/webp") for call in context.api.identify.await_args_list)
-    context.api.verify.assert_not_awaited()
+    context.api.send_selection_or_retry.assert_not_awaited()
 
 
 def test_backend_image_failure_retries_same_photo(identification):
@@ -138,7 +138,7 @@ def test_backend_image_failure_retries_same_photo(identification):
 
     assert asyncio.run(retry()) == context.verified
     assert context.api.identify.await_count == 2
-    context.api.verify.assert_not_awaited()
+    context.api.send_selection_or_retry.assert_not_awaited()
 
 
 @pytest.mark.parametrize("option_type", ["candidates", "presentations"])
@@ -147,7 +147,7 @@ def test_local_selection_failure_retains_name_and_retries_selection(identificati
     context = identification
     option = context.candidate if option_type == "candidates" else context.medication
     context.api.identify.return_value = {"status": "multiple_matches", option_type: [option, option]}
-    context.api.verify.side_effect = [error, context.verified]
+    context.api.send_selection_or_retry.side_effect = [error, context.verified]
 
     async def retry():
         await context.session.identify(b"photo")
@@ -158,7 +158,7 @@ def test_local_selection_failure_retains_name_and_retries_selection(identificati
 
     assert asyncio.run(retry()) == context.verified
     assert context.api.identify.await_count == 1
-    assert context.api.verify.await_args_list[0] == context.api.verify.await_args_list[1]
+    assert context.api.send_selection_or_retry.await_args_list[0] == context.api.send_selection_or_retry.await_args_list[1]
 
 
 @pytest.mark.parametrize("error", [ApiConnectionError("Offline"), ApiError("Bad gateway", status_code=502)])
@@ -168,7 +168,7 @@ def test_local_retry_failure_keeps_token_name_and_failed_step(identification, er
         "status": "timeout", "failed_step": "uses_translation",
         "retry_token": "first-token", "suggested_candidate": context.candidate,
     }
-    context.api.verify.side_effect = [error, context.verified]
+    context.api.send_selection_or_retry.side_effect = [error, context.verified]
 
     async def retry():
         await context.session.identify(b"photo")
@@ -179,7 +179,7 @@ def test_local_retry_failure_keeps_token_name_and_failed_step(identification, er
         return await context.session.retry()
 
     assert asyncio.run(retry()) == context.verified
-    assert all(call.kwargs == {"retry_token": "first-token"} for call in context.api.verify.await_args_list)
+    assert all(call.kwargs == {"retry_token": "first-token"} for call in context.api.send_selection_or_retry.await_args_list)
 
 
 @pytest.mark.parametrize("error", [PhotoTooLargeError("Too large"), ValueError("Invalid photo"), ApiError("Invalid response")])
@@ -201,7 +201,7 @@ def test_expired_retry_token_is_reported_without_restarting_image_analysis(ident
     context.api.identify.return_value = {
         "status": "timeout", "failed_step": "cima_verification", "retry_token": "expired-token"
     }
-    context.api.verify.side_effect = ApiError("The retry token has expired.", status_code=400)
+    context.api.send_selection_or_retry.side_effect = ApiError("The retry token has expired.", status_code=400)
 
     async def retry():
         await context.session.identify(b"photo")
@@ -219,7 +219,7 @@ def test_missing_retry_token_does_not_repeat_completed_steps(identification, aft
     context = identification
     failure = {"status": "timeout", "failed_step": "uses_translation"}
     context.api.identify.return_value = failure
-    context.api.verify.return_value = failure
+    context.api.send_selection_or_retry.return_value = failure
 
     async def fail():
         if after_selection:
@@ -238,7 +238,7 @@ def test_missing_retry_token_does_not_repeat_completed_steps(identification, aft
     assert not context.session.can_retry
     assert context.session.photo == b"photo"
     assert context.api.identify.await_count == 1
-    assert context.api.verify.await_count == int(after_selection)
+    assert context.api.send_selection_or_retry.await_count == int(after_selection)
 
 
 def test_cancel_discards_temporary_photo_and_result(identification):
@@ -416,7 +416,7 @@ def test_fresh_attempt_discards_previous_token_and_suggested_name(identification
     assert result["retry_token"] is None
     assert result["failed_step"] == "image_analysis"
     assert context.session.photo == b"new photo"
-    context.api.verify.assert_not_awaited()
+    context.api.send_selection_or_retry.assert_not_awaited()
 
 
 def test_retry_and_selection_require_the_matching_session_state(identification):
@@ -455,7 +455,7 @@ def test_backend_failure_keeps_selected_match_when_suggested_candidate_is_missin
     if include_null_candidate:
         failure["suggested_candidate"] = None
     original_failure = deepcopy(failure)
-    context.api.verify.side_effect = [
+    context.api.send_selection_or_retry.side_effect = [
         failure,
         {"status": status, "failed_step": "uses_translation", "retry_token": "second-token"},
         context.verified,
@@ -476,8 +476,8 @@ def test_backend_failure_keeps_selected_match_when_suggested_candidate_is_missin
     assert asyncio.run(select_and_retry()) == context.verified
     assert failure == original_failure
     assert context.api.identify.await_count == 1
-    assert context.api.verify.await_args_list[1].kwargs == {"retry_token": "first-token"}
-    assert context.api.verify.await_args_list[2].kwargs == {"retry_token": "second-token"}
+    assert context.api.send_selection_or_retry.await_args_list[1].kwargs == {"retry_token": "first-token"}
+    assert context.api.send_selection_or_retry.await_args_list[2].kwargs == {"retry_token": "second-token"}
 
 
 def test_backend_suggested_candidate_takes_precedence_over_selected_match(identification):
@@ -488,7 +488,7 @@ def test_backend_suggested_candidate_takes_precedence_over_selected_match(identi
         "status": "timeout", "failed_step": "uses_translation",
         "retry_token": "signed-token", "suggested_candidate": suggested,
     }
-    context.api.verify.return_value = failure
+    context.api.send_selection_or_retry.return_value = failure
 
     async def select():
         await context.session.identify(b"photo")
@@ -504,7 +504,7 @@ def test_non_server_api_errors_are_not_recoverable_connection_errors(identificat
     context.api.identify.return_value = {
         "status": "multiple_matches", "presentations": [context.medication, context.medication]
     }
-    context.api.verify.side_effect = ApiError("Request failed", status_code=status_code)
+    context.api.send_selection_or_retry.side_effect = ApiError("Request failed", status_code=status_code)
 
     async def select():
         await context.session.identify(b"photo")

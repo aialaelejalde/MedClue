@@ -136,7 +136,7 @@ def test_user_selection_is_verified_without_image_analysis(identification, selec
         if selection == "candidate" else VerifyRequest(national_code="000010")
     )
 
-    result = asyncio.run(context.service.verify(request))
+    result = asyncio.run(context.service.process_selection_or_retry(request))
 
     assert result.status == "verified"
     assert result.medication == context.medication
@@ -146,6 +146,33 @@ def test_user_selection_is_verified_without_image_analysis(identification, selec
         context.cima.search_presentations.assert_not_awaited()
     else:
         context.cima.search_presentations.assert_awaited_once_with("Example")
+
+
+def test_missing_selected_presentation_raises_lookup_error_without_processing_uses(identification):
+    context = identification
+    context.cima.get_presentation.return_value = None
+    request = VerifyRequest(national_code="000010")
+
+    with pytest.raises(LookupError, match="selected CIMA presentation was not found"):
+        asyncio.run(context.service.process_selection_or_retry(request))
+
+    context.cima.get_presentation.assert_awaited_once_with("000010")
+    context.cima.get_official_indications.assert_not_awaited()
+    context.openai.translate_official_uses.assert_not_awaited()
+
+
+def test_invalid_retry_token_is_rejected_without_external_requests(identification):
+    context = identification
+    request = VerifyRequest(retry_token="invalid-token")
+
+    with pytest.raises(ValueError, match="retry token is invalid"):
+        asyncio.run(context.service.process_selection_or_retry(request))
+
+    context.openai.analyze_image.assert_not_awaited()
+    context.cima.search_presentations.assert_not_awaited()
+    context.cima.get_presentation.assert_not_awaited()
+    context.cima.get_official_indications.assert_not_awaited()
+    context.openai.translate_official_uses.assert_not_awaited()
 
 
 @pytest.mark.parametrize("step", ["image_analysis", "cima_verification"])
@@ -225,7 +252,7 @@ def test_global_timeout_retry_skips_completed_steps(identification, monkeypatch,
 
     call.side_effect = None
     another_instance = IdentificationService(context.cima, context.openai, RetryTokenManager(TEST_SECRET))
-    result = asyncio.run(another_instance.verify(VerifyRequest(retry_token=first.retry_token)))
+    result = asyncio.run(another_instance.process_selection_or_retry(VerifyRequest(retry_token=first.retry_token)))
 
     assert result.status == "verified"
     assert result.official_uses == ["Supported use"]

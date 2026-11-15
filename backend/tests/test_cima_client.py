@@ -7,7 +7,7 @@ import pytest
 
 from medclue_api.cima_client import CimaClient
 from medclue_api.matching import find_presentation_matches
-from medclue_api.schemas import MedicationCandidate, VerifyRequest
+from medclue_api.schemas import MedicationCandidate
 
 
 def medication(registration="000001", name="EXAMPLE 500 mg COMPRIMIDOS EFG", strength="500 mg", form="COMPRIMIDO", codes=("000010", "000020")):
@@ -68,7 +68,7 @@ def test_search_only_requests_details_for_matching_names(cima_client):
 
     results = asyncio.run(client.search_presentations("  EXAMPLE  "))
 
-    assert len(results) == 1
+    assert len(results) == 2
     assert requests[0].url.params["nombre"] == "example"
     assert [dict(request.url.params) for request in requests[1:]] == [{"nregistro": "000001"}]
     assert responses == []
@@ -82,7 +82,7 @@ def test_search_keeps_small_name_differences(cima_client, query):
 
     results = asyncio.run(client.search_presentations(query))
 
-    assert len(results) == 1
+    assert len(results) == 2
     assert len(requests) == 2
 
 
@@ -94,7 +94,7 @@ def test_search_keeps_names_when_strength_is_missing_or_complex(cima_client, str
 
     results = asyncio.run(client.search_presentations("Example"))
 
-    assert len(results) == 1
+    assert len(results) == 2
     assert len(requests) == 2
 
 
@@ -110,7 +110,7 @@ def test_filtered_first_page_does_not_hide_matches_on_later_pages(cima_client):
 
     results = asyncio.run(client.search_presentations("Example"))
 
-    assert len(results) == 1
+    assert len(results) == 2
     assert [request.url.params["pagina"] for request in requests[:2]] == ["1", "2"]
     assert dict(requests[2].url.params) == {"nregistro": "000001"}
 
@@ -133,13 +133,15 @@ def test_candidates_on_different_pages_remain_distinct(cima_client):
     assert find_presentation_matches(candidate, results).verified is None
 
 
-def test_repeated_search_records_do_not_duplicate_options(cima_client):
+def test_repeated_search_records_do_not_duplicate_presentations(cima_client):
     client, requests, responses = cima_client
     selected = medication()
     responses.extend([httpx.Response(200, json=search_page([selected, selected])),
                       httpx.Response(200, json=selected), httpx.Response(200, json=selected)])
 
-    assert len(asyncio.run(client.search_presentations("Example"))) == 1
+    results = asyncio.run(client.search_presentations("Example"))
+
+    assert [result.national_code for result in results] == ["000010", "000020"]
     assert len(requests) == 3
 
 
@@ -158,14 +160,15 @@ def test_package_sizes_become_one_option_with_a_usable_code(cima_client):
                       httpx.Response(200, json=selected), httpx.Response(200, json=selected)])
 
     results = asyncio.run(client.search_presentations("Example"))
-    request = VerifyRequest(national_code=results[0].national_code)
-    verified = asyncio.run(client.get_presentation(request.national_code))
+    verified = asyncio.run(client.get_presentation(results[0].national_code))
     candidate = MedicationCandidate(name="Example", strength="500 mg", form="tablet")
+    matches = find_presentation_matches(candidate, results)
 
-    assert len(results) == 1
+    assert [result.national_code for result in results] == ["000010", "000020"]
+    assert matches.presentations == [results[0]]
     assert verified == results[0]
     assert results[0].national_code == "000010"
-    assert find_presentation_matches(candidate, results).verified == verified
+    assert matches.verified == verified
     assert requests[-1].url.params["cn"] == "000010"
 
 
@@ -179,6 +182,44 @@ def test_any_package_code_can_still_be_verified(cima_client, code):
     assert result.national_code == code
     assert result.registration_number == "000001"
     assert dict(requests[0].url.params) == {"cn": code}
+
+
+def test_official_indications_are_retrieved_from_section_4_1(cima_client):
+    client, requests, responses = cima_client
+    responses.append(httpx.Response(
+        200,
+        text="  Official therapeutic indications.\n",
+        headers={"Content-Type": "text/plain; charset=utf-8"},
+    ))
+
+    result = asyncio.run(client.get_official_indications("000001"))
+
+    assert result == "Official therapeutic indications."
+    assert requests[0].url.path == "/cima/rest/docSegmentado/contenido/1"
+    assert dict(requests[0].url.params) == {"nregistro": "000001", "seccion": "4.1"}
+    assert requests[0].headers["Accept"] == "text/plain"
+
+
+def test_official_indications_return_empty_text_for_no_content(cima_client):
+    client, _, responses = cima_client
+    responses.append(httpx.Response(204))
+
+    result = asyncio.run(client.get_official_indications("000001"))
+
+    assert result == ""
+
+
+@pytest.mark.parametrize("content_type", ["text/html", "application/json"])
+def test_official_indications_reject_unexpected_content_types(cima_client, content_type):
+    client, _, responses = cima_client
+    responses.append(httpx.Response(
+        200,
+        text="Unexpected content",
+        headers={"Content-Type": content_type},
+    ))
+
+    with pytest.raises(ValueError, match="plain-text therapeutic indications"):
+        asyncio.run(client.get_official_indications("000001"))
 
 
 @pytest.mark.parametrize(
@@ -202,6 +243,53 @@ def test_search_keeps_different_doses_forms_and_registrations(cima_client, chang
 
     assert [result.national_code for result in results] == ["000010", "000020"]
     assert results[0] != results[1]
+
+
+@pytest.mark.parametrize("response", [httpx.Response(204), httpx.Response(200, json=search_page([]))])
+def test_search_without_results_returns_no_presentations(cima_client, response):
+    client, requests, responses = cima_client
+    responses.append(response)
+
+    results = asyncio.run(client.search_presentations("Example"))
+
+    assert results == []
+    assert len(requests) == 1
+
+
+def test_partial_last_page_keeps_all_medications(cima_client):
+    client, requests, responses = cima_client
+    first = medication("000001", codes=("000010",))
+    second = medication("000002", codes=("000020",))
+    third = medication("000003", codes=("000030",))
+    responses.extend([
+        httpx.Response(200, json=search_page([first, second], total=3, page_size=2)),
+        httpx.Response(200, json=search_page([third], page=2, total=3, page_size=2)),
+        httpx.Response(200, json=first),
+        httpx.Response(200, json=second),
+        httpx.Response(200, json=third),
+    ])
+
+    results = asyncio.run(client.search_presentations("Example"))
+
+    assert [result.national_code for result in results] == ["000010", "000020", "000030"]
+    assert [request.url.params["pagina"] for request in requests[:2]] == ["1", "2"]
+
+
+@pytest.mark.parametrize("changes", [{"totalFilas": 3}, {"tamanioPagina": 2}])
+def test_pagination_changes_raise_an_error(cima_client, changes):
+    client, _, responses = cima_client
+    first = medication("000001", codes=("000010",))
+    second = medication("000002", codes=("000020",))
+    responses.extend([
+        httpx.Response(200, json=search_page([first], total=2, page_size=1)),
+        httpx.Response(200, json={
+            **search_page([second], page=2, total=2, page_size=1),
+            **changes,
+        }),
+    ])
+
+    with pytest.raises(ValueError, match="changed during pagination"):
+        asyncio.run(client.search_presentations("Example"))
 
 
 @pytest.mark.parametrize("changes", [{"pagina": 2}, {"totalFilas": -1}, {"tamanioPagina": 0}, {"resultados": None}, {"totalFilas": 2}])
@@ -283,7 +371,7 @@ def test_official_name_resolves_coating_variation_without_extra_requests(
     presentations = asyncio.run(client.search_presentations(candidate.name))
     result = find_presentation_matches(candidate, presentations)
 
-    assert len(presentations) == 1
+    assert len(result.presentations) == 1
     assert result.verified == presentations[0]
     assert result.verified.registration_number == registration
     assert result.verified.name == selected["nombre"]

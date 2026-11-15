@@ -117,9 +117,49 @@ def test_invalid_retry_state_is_rejected(data):
         RetryState.model_validate(data)
 
 
-def test_translation_requires_retrieved_indications(medication):
+@pytest.mark.parametrize("field_name", ["medication", "indications"])
+def test_failed_cima_verification_cannot_store_confirmed_data(medication, field_name):
+    data = {"failed_step": "cima_verification", "national_code": "000010"}
+    data[field_name] = medication if field_name == "medication" else "Official indications"
+
+    with pytest.raises(ValidationError, match="cannot include confirmed information"):
+        RetryState.model_validate(data)
+
+
+@pytest.mark.parametrize("step", ["official_uses_retrieval", "uses_translation"])
+@pytest.mark.parametrize("field_name", ["candidate", "national_code"])
+def test_retry_after_verification_uses_only_confirmed_medication(medication, step, field_name):
+    data = {
+        "failed_step": step,
+        "medication": medication,
+        "indications": "Official indications" if step == "uses_translation" else None,
+    }
+    data[field_name] = (
+        MedicationCandidate(name="Example", strength=None, form=None)
+        if field_name == "candidate" else "000010"
+    )
+
+    with pytest.raises(ValidationError, match="Use the confirmed medication"):
+        RetryState.model_validate(data)
+
+
+def test_failed_indications_retrieval_cannot_have_indications(medication):
+    with pytest.raises(ValidationError, match="Indications have not been retrieved yet"):
+        RetryState(
+            failed_step="official_uses_retrieval",
+            medication=medication,
+            indications="Official indications",
+        )
+
+
+@pytest.mark.parametrize("indications", [None, "", "   "])
+def test_translation_requires_retrieved_indications(medication, indications):
     with pytest.raises(ValidationError, match="retrieved official indications"):
-        RetryState(failed_step="uses_translation", medication=medication)
+        RetryState(
+            failed_step="uses_translation",
+            medication=medication,
+            indications=indications,
+        )
 
 
 def test_signed_token_with_invalid_data_is_rejected(token_manager):

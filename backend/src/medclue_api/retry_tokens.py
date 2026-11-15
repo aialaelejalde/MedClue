@@ -6,7 +6,7 @@ from typing import Literal
 from itsdangerous import BadData, SignatureExpired, URLSafeTimedSerializer
 from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
-from medclue_api.config import RETRY_TOKEN_MAX_AGE_SECONDS
+from medclue_api.config import MIN_RETRY_TOKEN_SECRET_LENGTH, RETRY_TOKEN_MAX_AGE_SECONDS
 from medclue_api.schemas import CimaPresentation, MedicationCandidate
 
 
@@ -43,8 +43,8 @@ class RetryState(BaseModel):
 
 class RetryTokenManager:
     def __init__(self, secret: str):
-        if not isinstance(secret, str) or len(secret.strip()) < 32:
-            raise ValueError("The retry token secret must contain at least 32 characters.")
+        if not isinstance(secret, str) or len(secret.strip()) < MIN_RETRY_TOKEN_SECRET_LENGTH:
+            raise ValueError(f"The retry token secret must contain at least {MIN_RETRY_TOKEN_SECRET_LENGTH} characters.")
         self._serializer = URLSafeTimedSerializer(
             secret,
             salt="medclue-identification-retry-v1",
