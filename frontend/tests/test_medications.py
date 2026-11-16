@@ -45,6 +45,9 @@ def test_one_filled_field_is_enough_to_save(medication):
         Medication(),
         Medication(name="", notes=""),
         Medication(name=" \t", notes="\n "),
+        Medication(strength="500 mg"),
+        Medication(form="tablet"),
+        Medication(strength="500 mg", form="tablet"),
         Medication(id=1),
         Medication(created_at=datetime(2026, 11, 1, 12)),
         Medication(id=1, created_at=datetime(2026, 11, 1, 12)),
@@ -200,6 +203,8 @@ def test_selected_dates_must_be_calendar_dates(medication):
     [
         Medication(name=123),
         Medication(notes=123),
+        Medication(strength=123),
+        Medication(form=123),
         Medication(photo=b""),
         Medication(photo="photo path"),
         Medication(uses="Pain"),
@@ -223,6 +228,8 @@ def test_invalid_field_values_are_rejected(medication):
 def test_validation_keeps_the_original_field_values():
     medication = Medication(
         name="  Paracetamol  ",
+        strength=" 500 mg ",
+        form=" tablet ",
         photo=b"stored photo bytes",
         uses=["Pain", "My own reason"],
         amount=Amount("quantity", 0.5, "tablets"),

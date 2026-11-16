@@ -6,7 +6,7 @@ from copy import deepcopy
 import flet as ft
 
 from medclue_mobile.medications import Medication
-from medclue_mobile.ui.components import action_button, match_option, medication_name, result_layout, status_photo
+from medclue_mobile.ui.components import MatchOption, action_button, medication_name, result_layout, retry_icon, status_photo
 from medclue_mobile.ui.theme import SCREEN_MARGIN
 
 
@@ -58,13 +58,13 @@ class PossibleMatchResultScreen(ft.Container):
         self._on_retake = on_retake
         self._on_add = on_add
         self._busy = False
-        self._retry_button = action_button("Try again", self._retry, icon=ft.Icons.SYNC, kind="secondary")
+        self._retry_button = action_button("Try again", self._retry, icon=retry_icon(), kind="secondary")
         self._retry_button.visible = status != "no_match"
-        self._retake_button = action_button("Retake photo", self._retake, icon=ft.Icons.CAMERA_ALT_OUTLINED,
+        self._retake_button = action_button("Retake photo", self._retake_photo, icon=ft.Icons.CAMERA_ALT_OUTLINED,
                                             kind="secondary" if status == "no_match" else "tertiary")
         self._add_button = action_button(
             "Save to my medications" if status == "no_match" else "Add medication manually",
-            self._add, icon=ft.Icons.ADD_CIRCLE_OUTLINE,
+            self._add, icon=ft.Icons.SAVE_OUTLINED if status == "no_match" else ft.Icons.ADD_CIRCLE_OUTLINE,
             kind="primary" if status == "no_match" else "tertiary",
         )
 
@@ -98,7 +98,7 @@ class PossibleMatchResultScreen(ft.Container):
             ft.Text(message, theme_style=ft.TextThemeStyle.BODY_MEDIUM),
         ]
         if name:
-            controls.append(match_option(name, self._medication.strength, self._medication.form, show_selection=False))
+            controls.append(MatchOption(name, self._medication.strength, self._medication.form, show_selection=False))
         actions = [self._add_button, self._retake_button] if status == "no_match" else [
             self._retry_button, self._retake_button, self._add_button,
         ]
@@ -113,7 +113,7 @@ class PossibleMatchResultScreen(ft.Container):
         finally:
             self._set_busy(False)
 
-    async def _retake(self, event: ft.Event) -> None:
+    async def _retake_photo(self, event: ft.Event) -> None:
         if self._busy or not self._retake_button.visible:
             return
         self._set_busy(True)

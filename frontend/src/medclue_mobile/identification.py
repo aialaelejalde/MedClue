@@ -42,7 +42,14 @@ class IdentificationSession:
         return (
             not self.is_running
             and self._result is not None
-            and self._result.get("status") in ("not_identified", "connection_error", "timeout")
+            and (
+                self._result.get("status") in ("not_identified", "connection_error", "timeout")
+                or (
+                    self._result.get("status") == "verified"
+                    and self._result.get("failed_step") in ("official_uses_retrieval", "uses_translation")
+                    and bool(self._result.get("retry_token"))
+                )
+            )
         )
 
     async def identify(self, photo: bytes, media_type: str = "image/jpeg") -> dict:
@@ -91,6 +98,7 @@ class IdentificationSession:
         self._selection = None
 
     async def _run(self, selection: dict | None, candidate: dict | None = None) -> dict:
+        """Execute an identification request and manage its result, errors, and cancellation."""
         self._request_id += 1
         request_id = self._request_id
         previous_result = self._result or {}
@@ -109,8 +117,10 @@ class IdentificationSession:
                 if request_id != self._request_id:
                     raise asyncio.CancelledError()
 
-                if result.get("status") in ("connection_error", "timeout"):
-                    if result.get("suggested_candidate") is None and candidate is not None:
+                if result.get("status") in ("connection_error", "timeout") or (
+                    result.get("status") == "verified" and result.get("failed_step") is not None
+                ):
+                    if result.get("status") != "verified" and result.get("suggested_candidate") is None and candidate is not None:
                         result["suggested_candidate"] = deepcopy(candidate)
                     token = result.get("retry_token")
                     if token:
@@ -133,6 +143,8 @@ class IdentificationSession:
                     ),
                     "retry_token": selection.get("retry_token") if selection else None,
                 }
+                if previous_result.get("status") == "verified":
+                    result = deepcopy(previous_result)
 
             if request_id != self._request_id:
                 raise asyncio.CancelledError()

@@ -12,23 +12,37 @@ from medclue_mobile.api_client import ApiError, MedClueApiClient
 from medclue_mobile.cabinet import MedicationCabinet
 from medclue_mobile.identification import IdentificationSession
 from medclue_mobile.medications import Medication
-from medclue_mobile.photos import CameraPermissionError, PhotoManager
+from medclue_mobile.photos import PhotoManager
 from medclue_mobile.sqlite_repository import MedicationRepository
+from medclue_mobile.ui.components import retry_icon
 from medclue_mobile.ui.dialogs import confirm_leave_identification, show_error
-from medclue_mobile.ui.components import action_button, camera_guide
-from medclue_mobile.ui.screens.add import AddMedicationScreen
-from medclue_mobile.ui.screens.edit_medication import EditMedicationScreen
+from medclue_mobile.ui.photo_capture import PhotoCaptureDialog
 from medclue_mobile.ui.screens.home import HomeScreen
 from medclue_mobile.ui.screens.identification_result import IdentificationResultScreen
 from medclue_mobile.ui.screens.identify import IdentifyScreen
 from medclue_mobile.ui.screens.identifying_medication import IdentifyingMedicationScreen
 from medclue_mobile.ui.screens.medication_details import MedicationDetailsScreen
+from medclue_mobile.ui.screens.medication_editor import MedicationEditorScreen
 from medclue_mobile.ui.screens.possible_match_result import PossibleMatchResultScreen
 from medclue_mobile.ui.screens.possible_matches import PossibleMatchesScreen
-from medclue_mobile.ui.theme import BACKGROUND_COLOR, CARD_COLOR, FONT_FAMILY, BAR_HEIGHT, HEADER_HEIGHT, PRIMARY_COLOR, SCREEN_MARGIN, CONTENT_PADDING, create_theme
+from medclue_mobile.ui.theme import (
+    BACKGROUND_COLOR,
+    BAR_HEIGHT,
+    CARD_COLOR,
+    FONT_FAMILY,
+    HEADER_HEIGHT,
+    PRIMARY_COLOR,
+    create_theme,
+)
 
 
 DEFAULT_BACKEND_URL = "https://medclue-api-377942439711.europe-southwest1.run.app"
+HOME_TAB = 0
+IDENTIFY_TAB = 1
+ADD_TAB = 2
+LOGO_WIDTH = 116
+LOGO_HEIGHT = 24
+HEADER_TITLE_SPACING = 16
 
 
 class MedClueApp:
@@ -41,18 +55,18 @@ class MedClueApp:
         self._session: IdentificationSession | None = None
         self._screen: ft.Control | None = None
         self._medication_id: int | None = None
-        self._tab = 0
+        self._tab = HOME_TAB
         self._navigating = False
         self._attempt_id = 0
         self._closed = False
-        self._photo_result: asyncio.Future | None = None
+        self._photo_dialog: PhotoCaptureDialog | None = None
         self._navigation = ft.NavigationBar(
             destinations=[
                 ft.NavigationBarDestination(icon=ft.Icon(ft.Icons.HOME_OUTLINED, color=PRIMARY_COLOR), selected_icon=ft.Icon(ft.Icons.HOME, color=PRIMARY_COLOR), label="Home"),
                 ft.NavigationBarDestination(icon=ft.Icon(ft.Icons.CAMERA_ALT_OUTLINED, color=PRIMARY_COLOR), selected_icon=ft.Icon(ft.Icons.CAMERA_ALT, color=PRIMARY_COLOR), label="Identify"),
                 ft.NavigationBarDestination(icon=ft.Icon(ft.Icons.ADD_CIRCLE_OUTLINE, color=PRIMARY_COLOR), selected_icon=ft.Icon(ft.Icons.ADD_CIRCLE, color=PRIMARY_COLOR), label="Add"),
             ],
-            selected_index=0,
+            selected_index=HOME_TAB,
             on_change=self._tab_changed,
             height=BAR_HEIGHT,
             bgcolor=CARD_COLOR,
@@ -64,11 +78,11 @@ class MedClueApp:
         self._view.bgcolor = BACKGROUND_COLOR
         self._view.on_confirm_pop = self._back
         self._view.appbar = ft.AppBar(
-            title=ft.Image(src="medclue_logo.png", width=116, height=24,
+            title=ft.Image(src="medclue_logo.png", width=LOGO_WIDTH, height=LOGO_HEIGHT,
                            fit=ft.BoxFit.CONTAIN, semantics_label="MedClue"),
             automatically_imply_leading=False, center_title=False,
             toolbar_height=HEADER_HEIGHT, bgcolor=CARD_COLOR, elevation=0, elevation_on_scroll=0,
-            title_spacing=16,
+            title_spacing=HEADER_TITLE_SPACING,
         )
 
     async def start(self) -> None:
@@ -99,11 +113,22 @@ class MedClueApp:
             except (OSError, sqlite3.Error, ValueError, ft.FletException):
                 if self._closed or not await show_error(
                     self._page, "Cannot open medicine cabinet",
-                    "We couldn't open your saved medications. Please try again.", action_text="Try again",
+                    "We couldn't open your saved medications. Please try again.",
+                    action_text="Try again", action_icon=retry_icon(),
                 ):
                     return
         if not self._closed:
             self._show_home()
+
+    async def close(self, event: ft.Event | None = None) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        self._reset_identification()
+        if self._photo_dialog is not None:
+            self._photo_dialog.close()
+        if self._api_client is not None:
+            await self._api_client.close()
 
     def _show_screen(self, screen: ft.Control, tab: int) -> None:
         if self._closed:
@@ -119,7 +144,7 @@ class MedClueApp:
 
     def _show_home(self) -> None:
         self._medication_id = None
-        self._show_screen(HomeScreen(self._cabinet, self._open_details, self._open_identify, self._open_add, self._open_edit), 0)
+        self._show_screen(HomeScreen(self._cabinet, self._open_details, self._open_identify, self._open_add, self._open_edit), HOME_TAB)
 
     async def _open_details(self, medication_id: int) -> None:
         try:
@@ -128,7 +153,7 @@ class MedClueApp:
             await show_error(self._page, "Cannot open medication", "We couldn't load this medication. Please try again.")
             return
         self._medication_id = medication_id
-        self._show_screen(MedicationDetailsScreen(self._cabinet, medication, self._open_edit, self._after_deleted), 0)
+        self._show_screen(MedicationDetailsScreen(self._cabinet, medication, self._open_edit, self._after_deleted), HOME_TAB)
 
     async def _open_edit(self, medication_id: int) -> None:
         try:
@@ -137,20 +162,23 @@ class MedClueApp:
             await show_error(self._page, "Cannot edit medication", "We couldn't load this medication. Please try again.")
             return
         self._medication_id = medication_id
-        self._show_screen(EditMedicationScreen(self._cabinet, medication, self._after_saved, on_take_photo=self._take_photo), 0)
+        self._show_screen(MedicationEditorScreen(
+            self._cabinet, self._after_saved, mode="edit", medication=medication,
+            on_take_photo=self._take_photo,
+        ), HOME_TAB)
 
     async def _open_add(self, medication: Medication | None = None, official_uses: list[str] | None = None) -> None:
         suggested_name = bool(medication and medication.name and official_uses is None)
-        screen = AddMedicationScreen(
-            self._cabinet, self._after_saved, medication=medication, official_uses=official_uses,
+        screen = MedicationEditorScreen(
+            self._cabinet, self._after_saved, mode="add", medication=medication, official_uses=official_uses,
             suggested_name=suggested_name, on_take_photo=self._take_photo,
         )
         self._reset_identification()
-        self._show_screen(screen, 2)
+        self._show_screen(screen, ADD_TAB)
 
     async def _after_saved(self, medication: Medication) -> None:
         self._medication_id = medication.id
-        self._show_screen(MedicationDetailsScreen(self._cabinet, medication, self._open_edit, self._after_deleted), 0)
+        self._show_screen(MedicationDetailsScreen(self._cabinet, medication, self._open_edit, self._after_deleted), HOME_TAB)
 
     async def _after_deleted(self) -> None:
         self._show_home()
@@ -169,7 +197,7 @@ class MedClueApp:
                 )
                 return
         self._reset_identification()
-        self._show_screen(IdentifyScreen(PhotoManager(), self._identify), 1)
+        self._show_screen(IdentifyScreen(PhotoManager(), self._identify), IDENTIFY_TAB)
 
     def _reset_identification(self) -> None:
         self._attempt_id += 1
@@ -188,19 +216,22 @@ class MedClueApp:
     async def _run_identification(self, operation: Awaitable[dict]) -> None:
         self._attempt_id += 1
         attempt_id = self._attempt_id
-        self._show_screen(IdentifyingMedicationScreen(self._open_identify), 1)
+        self._show_screen(IdentifyingMedicationScreen(self._open_identify), IDENTIFY_TAB)
         try:
             result = await operation
             if self._closed or attempt_id != self._attempt_id:
                 return
             photo = self._session.photo
             if result["status"] == "verified":
-                screen = IdentificationResultScreen(result, photo, self._open_add, self._open_identify)
+                screen = IdentificationResultScreen(
+                    result, photo, self._open_add, self._open_identify,
+                    on_retry=self._retry_identification,
+                )
             elif result["status"] == "multiple_matches":
                 screen = PossibleMatchesScreen(result, photo, self._select_match, self._open_identify, self._open_add)
             else:
                 screen = PossibleMatchResultScreen(result, photo, self._retry_identification, self._open_identify, self._open_add)
-            self._show_screen(screen, 1)
+            self._show_screen(screen, IDENTIFY_TAB)
         except asyncio.CancelledError:
             return
         except (ApiError, ValueError, LookupError):
@@ -213,9 +244,9 @@ class MedClueApp:
                     await self._open_identify()
 
     async def _can_leave(self) -> bool:
-        if self._photo_result is not None:
+        if self._photo_dialog is not None:
             return False
-        if isinstance(self._screen, (AddMedicationScreen, EditMedicationScreen)):
+        if isinstance(self._screen, MedicationEditorScreen):
             return await self._screen.can_leave()
         if isinstance(self._screen, IdentifyingMedicationScreen):
             return await confirm_leave_identification(self._page)
@@ -229,18 +260,21 @@ class MedClueApp:
         self._page.update()
         if self._closed or self._navigating or self._screen is None:
             return
-        if selected == self._tab and isinstance(self._screen, (HomeScreen, IdentifyScreen, AddMedicationScreen)):
+        if selected == self._tab and (
+            isinstance(self._screen, (HomeScreen, IdentifyScreen))
+            or (isinstance(self._screen, MedicationEditorScreen) and not self._screen.is_editing)
+        ):
             return
         self._navigating = True
         try:
             if not await self._can_leave() or self._closed:
                 return
-            if selected == 0:
+            if selected == HOME_TAB:
                 self._reset_identification()
                 self._show_home()
-            elif selected == 1:
+            elif selected == IDENTIFY_TAB:
                 await self._open_identify()
-            elif selected == 2:
+            elif selected == ADD_TAB:
                 await self._open_add()
         finally:
             self._navigating = False
@@ -249,16 +283,16 @@ class MedClueApp:
         if self._closed:
             return
         await self._view.confirm_pop(False)
-        if self._closed or self._navigating or self._photo_result is not None:
+        if self._closed or self._navigating or self._photo_dialog is not None:
             return
         self._navigating = True
         try:
-            if isinstance(self._screen, EditMedicationScreen):
+            if isinstance(self._screen, MedicationEditorScreen):
                 if await self._screen.can_leave() and not self._closed:
-                    await self._open_details(self._medication_id)
-            elif isinstance(self._screen, AddMedicationScreen):
-                if await self._screen.can_leave() and not self._closed:
-                    self._show_home()
+                    if self._screen.is_editing:
+                        await self._open_details(self._medication_id)
+                    else:
+                        self._show_home()
             elif isinstance(self._screen, (MedicationDetailsScreen, IdentifyScreen)):
                 self._reset_identification()
                 self._show_home()
@@ -268,140 +302,13 @@ class MedClueApp:
             self._navigating = False
 
     async def _take_photo(self) -> bytes | None:
-        photos = PhotoManager()
-        result = asyncio.get_running_loop().create_future()
-        self._photo_result = result
-        capturing = False
-
-        def dismiss(event: ft.Event | None = None) -> None:
-            if not result.done():
-                result.set_result(None)
-
-        def cancel(event: ft.Event) -> None:
-            dismiss()
-            if dialog.open:
-                self._page.pop_dialog()
-
-        async def capture(event: ft.Event) -> None:
-            nonlocal capturing
-            if capturing or result.done():
-                return
-            capturing = True
-            take_button.disabled = True
-            dialog.update()
-            try:
-                photo = await photos.capture()
-                if not result.done():
-                    result.set_result(photo)
-                    self._page.pop_dialog()
-            except (OSError, ValueError, RuntimeError, ft.FletException):
-                if not result.done() and not self._closed:
-                    await show_error(self._page, "Could not take photo", "Please try again.")
-            finally:
-                capturing = False
-                take_button.disabled = False
-                if dialog.open and not self._closed:
-                    dialog.update()
-
-        take_button = action_button("Take photo", capture, icon=ft.Icons.CAMERA_ALT_OUTLINED)
-        take_button.disabled = True
-        preview_width = 0
-        preview_height = 0
-        preview_ratio = 3 / 4
-        photos.camera.expand = False
-        photos.camera.left = 0
-        photos.camera.top = 0
-
-        def fit_preview() -> None:
-            if result.done() or self._closed or preview_width <= 0 or preview_height <= 0:
-                return
-            width = max(preview_width, preview_height * preview_ratio)
-            height = width / preview_ratio
-            photos.camera.width = width
-            photos.camera.height = height
-            photos.camera.left = (preview_width - width) / 2
-            photos.camera.top = (preview_height - height) / 2
-            photos.camera.update()
-
-        def resize_preview(event: ft.LayoutSizeChangeEvent) -> None:
-            nonlocal preview_width, preview_height
-            preview_width, preview_height = event.width, event.height
-            fit_preview()
-
-        def camera_changed(event: ft.Event) -> None:
-            nonlocal preview_ratio
-            ratio = event.aspect_ratio
-            if ratio is None or ratio <= 0:
-                return
-            orientation = event.preview_pause_orientation or event.locked_capture_orientation or event.device_orientation
-            landscape = orientation in (ft.DeviceOrientation.LANDSCAPE_LEFT, ft.DeviceOrientation.LANDSCAPE_RIGHT)
-            preview_ratio = max(ratio, 1 / ratio) if landscape else min(ratio, 1 / ratio)
-            fit_preview()
-
-        photos.camera.on_state_change = camera_changed
-        camera_frame = ft.Container(
-            content=ft.Stack(controls=[photos.camera, camera_guide()], fit=ft.StackFit.EXPAND),
-            aspect_ratio=4 / 3,
-            clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
-            border_radius=16,
-            on_size_change=resize_preview,
-        )
-        dialog = ft.AlertDialog(
-            content=ft.Container(
-                width=max(0, (self._page.width or 360) - 2 * (SCREEN_MARGIN + CONTENT_PADDING)),
-                content=ft.Column(
-                    controls=[
-                        camera_frame,
-                        ft.Row(controls=[take_button]),
-                        ft.Row(controls=[action_button("Cancel", cancel, kind="tertiary")]),
-                    ],
-                    spacing=CONTENT_PADDING,
-                    tight=True,
-                    horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
-                ),
-            ),
-            on_dismiss=dismiss,
-            scrollable=True,
-            bgcolor=CARD_COLOR,
-            shape=ft.RoundedRectangleBorder(radius=20),
-            inset_padding=ft.Padding.symmetric(horizontal=SCREEN_MARGIN, vertical=SCREEN_MARGIN),
-            content_padding=ft.Padding.all(CONTENT_PADDING),
-            actions_padding=0,
-        )
-        self._page.show_dialog(dialog)
+        dialog = PhotoCaptureDialog(self._page)
+        self._photo_dialog = dialog
         try:
-            try:
-                await photos.initialize_camera()
-            except CameraPermissionError:
-                if result.done():
-                    return None
-                raise
-            except (OSError, ValueError, RuntimeError, ft.FletException):
-                if result.done():
-                    return None
-                if not self._closed:
-                    await show_error(self._page, "Could not take photo", "We couldn't start the camera. Please try again.")
-                return None
-            if not result.done() and not self._closed:
-                take_button.disabled = False
-                dialog.update()
-            return await result
+            return await dialog.open()
         finally:
-            photos.discard_photo()
-            self._photo_result = None
-            if dialog.open and not self._closed:
-                self._page.pop_dialog()
+            self._photo_dialog = None
 
     async def _lifecycle_changed(self, event: ft.AppLifecycleStateChangeEvent) -> None:
         if event.state == ft.AppLifecycleState.DETACH:
             await self.close()
-
-    async def close(self, event: ft.Event | None = None) -> None:
-        if self._closed:
-            return
-        self._closed = True
-        self._reset_identification()
-        if self._photo_result is not None and not self._photo_result.done():
-            self._photo_result.set_result(None)
-        if self._api_client is not None:
-            await self._api_client.close()

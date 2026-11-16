@@ -9,8 +9,24 @@ from medclue_mobile.cabinet import MedicationCabinet
 from medclue_mobile.medications import Medication, validate_medication
 from medclue_mobile.ui.components import DeviceDate, action_button, information_row, medication_name, medication_photo, medication_subtitle, soft_section, use_chips
 from medclue_mobile.ui.dialogs import delete_medication_with_confirmation
-from medclue_mobile.ui.medication_form import (AMOUNT_UNIT_LABELS, FOOD_LABELS, FREQUENCY_LABELS, TREATMENT_END_LABELS)
-from medclue_mobile.ui.theme import BACKGROUND_COLOR, CARD_SPACING, CONTENT_PADDING, SCREEN_MARGIN, TEXT_COLOR
+from medclue_mobile.ui.medication_labels import (
+    AMOUNT_UNIT_LABELS,
+    FOOD_LABELS,
+    FREQUENCY_LABELS,
+    TREATMENT_END_LABELS,
+)
+from medclue_mobile.ui.theme import (
+    BACKGROUND_COLOR,
+    CARD_SPACING,
+    CONTENT_PADDING,
+    MEDICATION_PHOTO_HEIGHT,
+    PHOTO_FRAME_ASPECT_RATIO,
+    SCREEN_MARGIN,
+    TEXT_COLOR,
+)
+
+
+NOTES_CORNER_RADIUS = 12
 
 
 class MedicationDetailsScreen(ft.Container):
@@ -55,7 +71,7 @@ class MedicationDetailsScreen(ft.Container):
     def _saved_information(self) -> list[ft.Control]:
         medication = self._medication
         controls = [soft_section("Medication", [
-            medication_photo(medication.photo, height=180, aspect_ratio=4 / 3, fit=ft.BoxFit.COVER),
+            medication_photo(medication.photo, height=MEDICATION_PHOTO_HEIGHT, aspect_ratio=PHOTO_FRAME_ASPECT_RATIO, fit=ft.BoxFit.COVER),
             medication_name(medication.name, theme_style=ft.TextThemeStyle.TITLE_LARGE),
             medication_subtitle(medication.strength, medication.form),
         ])]
@@ -106,7 +122,7 @@ class MedicationDetailsScreen(ft.Container):
         if medication.notes and medication.notes.strip():
             dates.extend([
                 ft.Text("Notes", theme_style=ft.TextThemeStyle.BODY_MEDIUM),
-                ft.Container(content=ft.Text(medication.notes, color=TEXT_COLOR), bgcolor=BACKGROUND_COLOR, padding=CONTENT_PADDING, border_radius=12),
+                ft.Container(content=ft.Text(medication.notes, color=TEXT_COLOR), bgcolor=BACKGROUND_COLOR, padding=CONTENT_PADDING, border_radius=NOTES_CORNER_RADIUS),
             ])
         if dates:
             controls.append(soft_section("Dates & notes", dates))

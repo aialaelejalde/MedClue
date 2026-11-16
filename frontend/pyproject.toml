@@ -8,19 +8,19 @@ authors = [
     { name = "Aiala Elejalde", email = "elejalde46@gmail.com" }
 ]
 dependencies = [
-    "flet>=1.0.5",
+    "flet==1.0.5",
     "httpx==0.28.1",
     "flet-camera==1.0.5",
     "flet-permission-handler==1.0.5",
-    "Pillow==12.2.0",
+    "Pillow==13.0.0",
     "Babel==2.18.0",
 ]
 
 [dependency-groups]
 dev = [
-    "flet-cli>=1.0.5",
-    "flet-desktop>=1.0.5",
-    "pytest",
+    "flet-cli==1.0.5",
+    "flet-desktop==1.0.5",
+    "pytest==9.2.0",
 ]
 
 [tool.pytest.ini_options]

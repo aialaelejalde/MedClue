@@ -98,6 +98,12 @@ class IdentificationResponse(_Schema):
 
         if self.status in ("connection_error", "timeout"):
             self._check_failure()
+        elif self.status == "verified" and (self.failed_step is not None or self.retry_token is not None):
+            if self.failed_step not in ("official_uses_retrieval", "uses_translation"):
+                raise ValueError("Only official uses can fail after medication verification.")
+            if self.official_uses:
+                raise ValueError("Unavailable official uses cannot include labels.")
+            self._check_failure()
         elif self.failed_step is not None or self.retry_token is not None:
             raise ValueError("Only a connection error or timeout can include retry details.")
 

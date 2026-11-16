@@ -21,7 +21,7 @@ def openai_client(monkeypatch):
             output_parsed=ImageAnalysisResult(candidates=[]),
         )
     )
-    sdk_client = SimpleNamespace(responses=SimpleNamespace(parse=parse))
+    sdk_client = SimpleNamespace(responses=SimpleNamespace(parse=parse), close=AsyncMock())
     monkeypatch.setattr(
         "medclue_api.openai_client.AsyncOpenAI",
         Mock(return_value=sdk_client),
@@ -32,6 +32,14 @@ def openai_client(monkeypatch):
         retry_token_secret="test-retry-secret-with-at-least-32-characters",
     )
     return OpenAIClient(settings), parse
+
+
+def test_close_closes_openai_client(openai_client):
+    client, _ = openai_client
+
+    asyncio.run(client.close())
+
+    client._client.close.assert_awaited_once_with()
 
 
 @pytest.mark.parametrize(

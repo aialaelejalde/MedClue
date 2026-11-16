@@ -34,17 +34,19 @@ def api_client(monkeypatch):
     asyncio.run(client.close())
 
 
-def test_identify_sends_the_original_photo_as_multipart(api_client):
+@pytest.mark.parametrize("media_type", ["image/jpeg", "image/png", "image/webp"])
+def test_identify_sends_the_original_photo_as_multipart(api_client, media_type):
     client, requests, responses = api_client
     responses.append(httpx.Response(200, json={"status": "not_identified"}))
 
-    result = asyncio.run(client.identify(b"original photo", "image/png"))
+    result = asyncio.run(client.identify(b"original photo", media_type))
 
     assert result == {"status": "not_identified"}
+    assert requests[0].method == "POST"
     assert str(requests[0].url) == "https://medclue.test/identify"
     assert requests[0].headers["content-type"].startswith("multipart/form-data;")
     assert b'name="photo"' in requests[0].content
-    assert b"Content-Type: image/png" in requests[0].content
+    assert f"Content-Type: {media_type}".encode("ascii") in requests[0].content
     assert b"original photo" in requests[0].content
 
 
@@ -77,11 +79,12 @@ def test_verify_sends_only_the_selected_data(api_client, selection):
 
     asyncio.run(client.send_selection_or_retry(**selection))
 
+    assert requests[0].method == "POST"
     assert str(requests[0].url) == "https://medclue.test/verify"
     assert json.loads(requests[0].content) == selection
 
 
-def test_backend_timeout_result_keeps_its_retry_data(api_client):
+def test_identify_returns_timeout_response(api_client):
     client, _, responses = api_client
     result = {
         "status": "timeout",
@@ -116,7 +119,12 @@ def test_http_errors_keep_the_backend_message_and_status(api_client, status_code
 
 @pytest.mark.parametrize(
     "response",
-    [httpx.Response(200, text="not JSON"), httpx.Response(200, json={"status": "unknown"})],
+    [
+        httpx.Response(200, text="not JSON"),
+        httpx.Response(200, json={"status": "unknown"}),
+        httpx.Response(200, json=[]),
+        httpx.Response(200, json={}),
+    ],
 )
 def test_invalid_backend_response_is_rejected(api_client, response):
     client, _, responses = api_client
@@ -203,6 +211,15 @@ def test_conflicting_selections_are_rejected_without_a_request(api_client):
     assert requests == []
 
 
-def test_backend_url_requires_https():
-    with pytest.raises(ValueError, match="HTTPS"):
-        MedClueApiClient("http://medclue.test")
+@pytest.mark.parametrize(
+    "backend_url, message",
+    [
+        ("http://medclue.test", "HTTPS"),
+        ("https://user:password@medclue.test", "credentials, a query, or a fragment"),
+        ("https://medclue.test?key=value", "credentials, a query, or a fragment"),
+        ("https://medclue.test#section", "credentials, a query, or a fragment"),
+    ],
+)
+def test_invalid_backend_url_is_rejected(backend_url, message):
+    with pytest.raises(ValueError, match=message):
+        MedClueApiClient(backend_url)

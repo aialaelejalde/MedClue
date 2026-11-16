@@ -44,6 +44,9 @@ class MedicationCabinet:
 
         return medications
 
+    def count_medications(self) -> int:
+        return self._repository.count()
+
     def get_medication(self, medication_id: int) -> Medication:
         medication = self._repository.get(medication_id)
         if medication is None:

@@ -1,4 +1,4 @@
-"""Test medication storage, changes, deletion, search, and sorting."""
+"""Test medication storage, editing, deletion, search, sorting, and duplicate handling."""
 
 import json
 import sqlite3
@@ -28,6 +28,18 @@ def cabinet(repository):
 
 def test_new_cabinet_is_empty(cabinet):
     assert cabinet.list_medications() == []
+
+
+def test_count_tracks_saved_and_deleted_medications_without_loading_records(cabinet, repository, monkeypatch):
+    assert cabinet.count_medications() == 0
+    first = cabinet.save_medication(Medication(name="First", photo=b"photo"))
+    cabinet.save_medication(Medication(name="Second"))
+    def fail_if_loaded():
+        raise AssertionError("Counting must not load medication records")
+    monkeypatch.setattr(repository, "list_all", fail_if_loaded)
+    assert cabinet.count_medications() == 2
+    cabinet.delete_medication(first.id)
+    assert cabinet.count_medications() == 1
 
 
 def test_save_keeps_all_fields_and_does_not_change_the_draft(cabinet):
@@ -69,12 +81,36 @@ def test_save_keeps_all_fields_and_does_not_change_the_draft(cabinet):
         Medication(notes="Notes only"),
     ],
 )
-def test_optional_and_custom_fields_are_restored(cabinet, draft):
+def test_optional_and_custom_fields_are_preserved(cabinet, draft):
     saved = cabinet.save_medication(draft)
     restored = cabinet.get_medication(saved.id)
 
     assert restored == saved
     assert replace(restored, id=None, created_at=None) == draft
+
+
+@pytest.mark.parametrize(
+    "column, stored_value",
+    [
+        pytest.param("amount", "{invalid json", id="malformed-json"),
+        pytest.param(
+            "amount", json.dumps({"type": "quantity", "value": -1, "unit": "mg"}),
+            id="negative-quantity",
+        ),
+        pytest.param("prescription_date", "not-a-date", id="invalid-date"),
+    ],
+)
+def test_invalid_stored_values_are_rejected_on_read(repository, tmp_path, column, stored_value):
+    saved = repository.add(Medication(name="Paracetamol"))
+    with closing(sqlite3.connect(tmp_path / "medclue.db")) as connection:
+        with connection:
+            connection.execute(
+                f"UPDATE medications SET {column} = ? WHERE id = ?",
+                (stored_value, saved.id),
+            )
+
+    with pytest.raises(ValueError, match="^The saved medication contains invalid values\\.$"):
+        repository.get(saved.id)
 
 
 def test_records_remain_after_reopening_and_initializing(cabinet, tmp_path):
@@ -188,14 +224,21 @@ def test_search_uses_only_saved_names_and_reasons(cabinet, query, expected_names
     assert [medication.name for medication in matches] == expected_names
 
 
-def test_name_sort_ignores_case_and_places_unnamed_records_last(cabinet):
-    first = cabinet.save_medication(Medication(name="paracetamol"))
-    second = cabinet.save_medication(Medication(name="Amoxicillin"))
-    unnamed = cabinet.save_medication(Medication(notes="No name"))
+@pytest.mark.parametrize(
+    "query, expected_names",
+    [
+        ("", ["amoxicillin", "Paracetamol", None]),
+        ("a", ["amoxicillin", "Paracetamol"]),
+    ],
+)
+def test_name_sort_ignores_case_and_places_unnamed_records_last(cabinet, query, expected_names):
+    cabinet.save_medication(Medication(name="Paracetamol"))
+    cabinet.save_medication(Medication(name="amoxicillin"))
+    cabinet.save_medication(Medication(notes="No name"))
 
-    assert cabinet.list_medications(sort_order="name_az") == [second, first, unnamed]
-    assert cabinet.list_medications("a", "name_az") == [second, first]
-    assert cabinet.list_medications() == [unnamed, second, first]
+    medications = cabinet.list_medications(query, sort_order="name_az")
+
+    assert [medication.name for medication in medications] == expected_names
 
 
 def test_duplicate_name_requires_confirmation_without_changing_the_draft(cabinet):
@@ -250,16 +293,26 @@ def test_renaming_to_an_existing_name_requires_confirmation(cabinet):
     assert len(cabinet.list_medications()) == 2
 
 
-def test_unique_name_changes_and_unnamed_records_need_no_confirmation(cabinet):
+@pytest.mark.parametrize("new_name", ["Amoxicillin", None])
+def test_changing_to_a_unique_or_empty_name_needs_no_confirmation(cabinet, new_name):
     saved = cabinet.save_medication(Medication(name="Paracetamol", notes="Keep"))
-    renamed = cabinet.save_medication(replace(saved, name="Amoxicillin"))
-    unnamed = cabinet.save_medication(replace(renamed, name=None))
-    another_unnamed = cabinet.save_medication(Medication(notes="Another record"))
 
-    assert renamed.name == "Amoxicillin"
-    assert unnamed.name is None
-    assert unnamed.id == saved.id
-    assert another_unnamed.id != unnamed.id
+    updated = cabinet.save_medication(replace(saved, name=new_name))
+
+    assert updated.name == new_name
+    assert updated.id == saved.id
+    assert cabinet.get_medication(saved.id) == updated
+
+
+def test_multiple_unnamed_records_need_no_confirmation(cabinet):
+    first = cabinet.save_medication(Medication(notes="First record"))
+    second = cabinet.save_medication(Medication(notes="Second record"))
+
+    assert first.name is None
+    assert second.name is None
+    assert second.id != first.id
+    assert cabinet.get_medication(first.id) == first
+    assert cabinet.get_medication(second.id) == second
 
 
 def test_duplicate_search_matches_full_names_and_excludes_the_current_record(cabinet):
@@ -297,11 +350,12 @@ def test_empty_records_are_not_written(cabinet):
 @pytest.mark.parametrize("operation", ["INSERT", "UPDATE", "DELETE"])
 def test_failed_writes_keep_stored_records_and_entered_values(cabinet, tmp_path, operation):
     saved = cabinet.save_medication(Medication(name="Paracetamol", photo=b"old"))
-    if operation == "INSERT":
-        draft = Medication(name="Amoxicillin", notes="Keep this draft")
-    else:
-        draft = replace(saved, notes="Changed notes", photo=b"new")
-    original = deepcopy(draft)
+    if operation != "DELETE":
+        if operation == "INSERT":
+            draft = Medication(name="Amoxicillin", notes="Keep this draft")
+        else:
+            draft = replace(saved, notes="Changed notes", photo=b"new")
+        original = deepcopy(draft)
 
     with closing(sqlite3.connect(tmp_path / "medclue.db")) as connection:
         with connection:
@@ -319,4 +373,5 @@ def test_failed_writes_keep_stored_records_and_entered_values(cabinet, tmp_path,
             cabinet.save_medication(draft)
 
     assert cabinet.list_medications() == [saved]
-    assert draft == original
+    if operation != "DELETE":
+        assert draft == original

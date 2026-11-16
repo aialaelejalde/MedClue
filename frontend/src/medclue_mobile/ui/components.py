@@ -1,7 +1,8 @@
 """Build small interface parts that several screens share."""
 
-import re
 import math
+import re
+from collections.abc import Callable
 from datetime import date
 
 import flet as ft
@@ -10,33 +11,86 @@ from babel import UnknownLocaleError
 from babel.dates import format_date
 
 from medclue_mobile.ui.theme import (
+    ACCENT_COLOR,
+    BACKGROUND_COLOR,
+    BLUE_BORDER,
+    BLUE_SURFACE,
     CARD_COLOR,
     CARD_RADIUS,
     CARD_SPACING,
     CONTENT_PADDING,
+    DANGER_COLOR,
+    DANGER_SURFACE,
+    FONT_FAMILY,
     ICON_SIZE,
+    LAVENDER_SURFACE,
+    LAVENDER_TEXT,
+    MEDICATION_PHOTO_HEIGHT,
+    PHOTO_FRAME_ASPECT_RATIO,
     PRIMARY_COLOR,
+    SCREEN_MARGIN,
+    SECONDARY_TEXT_COLOR,
+    SECTION_SPACING,
+    SMALL_ICON_SIZE,
+    SUCCESS_COLOR,
+    SUCCESS_SURFACE,
     TEXT_COLOR,
-    BACKGROUND_COLOR, BLUE_BORDER, BLUE_SURFACE, LAVENDER_SURFACE, LAVENDER_TEXT,
-    SECONDARY_TEXT_COLOR, SUCCESS_COLOR, SUCCESS_SURFACE, WARNING_COLOR,
-    WARNING_SURFACE, DANGER_COLOR, DANGER_SURFACE, action_style,
-    ACCENT_COLOR, FONT_FAMILY, INPUT_TEXT_SIZE, SECTION_SPACING, SCREEN_MARGIN,
+    TEXT_SIZE_MEDIUM,
+    TEXT_SIZE_SMALL,
+    WARNING_COLOR,
+    WARNING_SURFACE,
+    action_style,
 )
+
+
+CARD_SHADOW_OPACITY = 0.08
+CARD_SHADOW_BLUR_RADIUS = 8
+CARD_SHADOW_VERTICAL_OFFSET = 1
+
+USE_CHIP_HORIZONTAL_PADDING = 12
+USE_CHIP_VERTICAL_PADDING = 8
+USE_CHIP_RADIUS = 24
+MIN_COMPACT_USE_WIDTH = 24
+
+CAMERA_GUIDE_CORNER_SIZE = 24
+CAMERA_GUIDE_CORNER_INSET = 1
+CAMERA_GUIDE_CORNER_ARC_END = 8
+CAMERA_GUIDE_STROKE_WIDTH = 2
+CAMERA_GUIDE_BORDER_WIDTH = 0.5
+CAMERA_GUIDE_RADIUS = 8
+
+STATUS_BADGE_ICON_SIZE = 18
+STATUS_BADGE_SPACING = 6
+STATUS_BADGE_RADIUS = 24
+STATUS_BADGE_HORIZONTAL_PADDING = 12
+STATUS_BADGE_VERTICAL_PADDING = 8
+STATUS_BADGE_OFFSET = 12
+
+RESULT_ACTION_SPACING = 8
+LAYOUT_RESIZE_TOLERANCE = 0.5
+
+MATCH_DETAILS_SPACING = 4
+MATCH_OPTION_RADIUS = 12
+MATCH_INDICATOR_SIZE = 24
+MATCH_CHECK_ICON_SIZE = 16
+MATCH_BORDER_WIDTH = 1
+MATCH_SELECTED_BORDER_WIDTH = 2
+
+INFORMATION_VALUE_EXPAND = 2
+INFORMATION_ROW_RADIUS = 12
 
 
 @ft.control("TextField")
 class _DismissibleTextField(ft.TextField):
-    # Flet's Flutter TextField supports a changing blur token, but the Python
-    # TextField does not expose it yet. Declare it so it is serialized normally.
     blur: str = "0"
 
 
 def text_field(**kwargs) -> ft.TextField:
     field = _DismissibleTextField(
-        text_size=INPUT_TEXT_SIZE, color=TEXT_COLOR,
-        text_style=ft.TextStyle(size=INPUT_TEXT_SIZE, color=TEXT_COLOR, font_family=FONT_FAMILY),
-        label_style=ft.TextStyle(size=INPUT_TEXT_SIZE, color=PRIMARY_COLOR, font_family=FONT_FAMILY),
-        hint_style=ft.TextStyle(size=INPUT_TEXT_SIZE, color=PRIMARY_COLOR, font_family=FONT_FAMILY),
+        text_size=TEXT_SIZE_MEDIUM, color=TEXT_COLOR,
+        text_style=ft.TextStyle(size=TEXT_SIZE_MEDIUM, color=TEXT_COLOR, font_family=FONT_FAMILY),
+        label_style=ft.TextStyle(size=TEXT_SIZE_MEDIUM, color=PRIMARY_COLOR, font_family=FONT_FAMILY),
+        hint_style=ft.TextStyle(size=TEXT_SIZE_MEDIUM, color=PRIMARY_COLOR, font_family=FONT_FAMILY),
         **kwargs,
     )
 
@@ -49,35 +103,24 @@ def text_field(**kwargs) -> ft.TextField:
     return field
 
 
-def camera_guide(*, visible: bool = True) -> ft.Container:
-    def corner(*, flip_x: bool = False, flip_y: bool = False, **position) -> cv.Canvas:
-        def point(x: float, y: float) -> tuple[float, float]:
-            return (24 - x if flip_x else x, 24 - y if flip_y else y)
-
-        return cv.Canvas(
-            shapes=[cv.Path(
-                elements=[
-                    cv.Path.MoveTo(*point(1, 23)), cv.Path.LineTo(*point(1, 8)),
-                    cv.Path.QuadraticTo(*point(1, 1), *point(8, 1), w=math.sqrt(0.5)),
-                    cv.Path.LineTo(*point(23, 1)),
-                ],
-                paint=ft.Paint(color=ACCENT_COLOR, stroke_width=2,
-                               style=ft.PaintingStyle.STROKE,
-                               stroke_cap=ft.StrokeCap.ROUND, stroke_join=ft.StrokeJoin.ROUND),
-            )],
-            width=24, height=24, **position,
-        )
-
-    return ft.Container(
-        content=ft.Stack([
-            corner(top=0, left=0),
-            corner(flip_x=True, top=0, right=0),
-            corner(flip_y=True, bottom=0, left=0),
-            corner(flip_x=True, flip_y=True, bottom=0, right=0),
-        ]),
-        margin=SECTION_SPACING, visible=visible, ignore_interactions=True,
-        border=ft.Border.all(0.5, ACCENT_COLOR), border_radius=8,
+def action_button(
+    label: str,
+    on_click: ft.ControlEventHandler[ft.FilledButton],
+    *,
+    icon: ft.IconData | ft.Icon | None = None,
+    kind: str = "primary",
+) -> ft.FilledButton:
+    if icon is not None and not isinstance(icon, ft.Icon):
+        icon = ft.Icon(icon, size=SMALL_ICON_SIZE)
+    return ft.FilledButton(
+        label, icon=icon, on_click=on_click,
+        style=action_style(kind), elevation=0,
+        expand=True,
     )
+
+
+def retry_icon() -> ft.Icon:
+    return ft.Icon(ft.Icons.SYNC, size=SMALL_ICON_SIZE, rotate=math.pi / 2)
 
 
 def soft_card(
@@ -91,10 +134,10 @@ def soft_card(
         bgcolor=CARD_COLOR,
         border_radius=CARD_RADIUS,
         shadow=ft.BoxShadow(
-            color=ft.Colors.with_opacity(0.08, TEXT_COLOR),
-            blur_radius=8,
+            color=ft.Colors.with_opacity(CARD_SHADOW_OPACITY, TEXT_COLOR),
+            blur_radius=CARD_SHADOW_BLUR_RADIUS,
             spread_radius=0,
-            offset=ft.Offset(0, 1),
+            offset=ft.Offset(0, CARD_SHADOW_VERTICAL_OFFSET),
         ),
         padding=padding,
         clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
@@ -106,7 +149,7 @@ def soft_card(
 def soft_section(title: str, controls: list[ft.Control], *, spacing: int = CARD_SPACING) -> ft.Container:
     return soft_card(
         ft.Column(
-            controls=[ft.Text(title.upper(), size=12, color=SECONDARY_TEXT_COLOR, weight=ft.FontWeight.W_600), *controls],
+            controls=[ft.Text(title.upper(), size=TEXT_SIZE_SMALL, color=SECONDARY_TEXT_COLOR, weight=ft.FontWeight.W_600), *controls],
             spacing=spacing,
             tight=True,
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
@@ -131,24 +174,70 @@ def medication_name(
     )
 
 
-def _use_chip(use: str, *, full_text: bool = False, display_text: str | None = None) -> ft.Container:
+def medication_subtitle(strength: str | None, form: str | None, *, max_lines: int | None = None) -> ft.Text:
+    return ft.Text(
+        " · ".join(value.strip() for value in (strength, form) if value and value.strip()),
+        theme_style=ft.TextThemeStyle.BODY_MEDIUM,
+        visible=bool(strength or form),
+        max_lines=max_lines, overflow=ft.TextOverflow.ELLIPSIS if max_lines else None,
+    )
+
+
+class MatchOption(ft.Container):
+    """Display a medication option and manage its selection appearance."""
+
+    def __init__(
+        self,
+        name: str,
+        strength: str | None,
+        form: str | None,
+        *,
+        selected: bool = False,
+        show_selection: bool = True,
+        on_click: ft.ControlEventHandler[ft.Container] | None = None,
+    ):
+        indicator = ft.Container(
+            width=MATCH_INDICATOR_SIZE, height=MATCH_INDICATOR_SIZE, border_radius=MATCH_INDICATOR_SIZE / 2,
+            alignment=ft.Alignment.CENTER,
+            visible=show_selection,
+        )
+        super().__init__(
+            content=ft.Row([
+                ft.Column([medication_name(name), medication_subtitle(strength, form)],
+                          spacing=MATCH_DETAILS_SPACING, tight=True, expand=True),
+                indicator,
+            ], spacing=CARD_SPACING),
+            padding=CONTENT_PADDING, border_radius=MATCH_OPTION_RADIUS,
+            on_click=on_click, ink=on_click is not None,
+        )
+        self._indicator = indicator
+        self.set_selected(selected)
+
+    def set_selected(self, selected: bool) -> None:
+        """Set the visual appearance of the selection."""
+        self.bgcolor = BLUE_SURFACE if selected else CARD_COLOR
+        self.border = ft.Border.all(
+            MATCH_SELECTED_BORDER_WIDTH if selected else MATCH_BORDER_WIDTH,
+            PRIMARY_COLOR if selected else BLUE_BORDER,
+        )
+        self._indicator.bgcolor = PRIMARY_COLOR if selected else CARD_COLOR
+        self._indicator.border = ft.Border.all(MATCH_BORDER_WIDTH, PRIMARY_COLOR if selected else BLUE_BORDER)
+        self._indicator.content = ft.Icon(ft.Icons.CHECK, color=CARD_COLOR, size=MATCH_CHECK_ICON_SIZE) if selected else None
+
+
+def information_row(label: str, value: str | ft.Text) -> ft.Container:
+    text = value if isinstance(value, ft.Text) else ft.Text(value)
+    text.color, text.expand, text.text_align = TEXT_COLOR, INFORMATION_VALUE_EXPAND, ft.TextAlign.RIGHT
     return ft.Container(
-        content=ft.Text(
-            use if display_text is None else display_text, color=LAVENDER_TEXT,
-            max_lines=None if full_text else 1,
-            overflow=None if full_text else ft.TextOverflow.ELLIPSIS,
-            theme_style=ft.TextThemeStyle.BODY_MEDIUM,
-        ),
-        padding=ft.Padding.symmetric(horizontal=12, vertical=8),
-        border=ft.Border.all(0, ft.Colors.TRANSPARENT),
-        border_radius=24,
-        bgcolor=LAVENDER_SURFACE,
-        tooltip=use,
+        content=ft.Row([
+            ft.Text(label, theme_style=ft.TextThemeStyle.BODY_MEDIUM, no_wrap=True),
+            text,
+        ], spacing=CARD_SPACING),
+        padding=CONTENT_PADDING, bgcolor=BACKGROUND_COLOR, border_radius=INFORMATION_ROW_RADIUS,
     )
 
 
 def use_chips(uses: list[str], *, compact: bool = False, full_text: bool = False) -> ft.Control:
-    """Show compact summaries or complete labels without changing saved text."""
     if compact and uses:
         return _CompactUseChips(uses)
     return ft.Row(
@@ -159,18 +248,37 @@ def use_chips(uses: list[str], *, compact: bool = False, full_text: bool = False
     )
 
 
+def _use_chip(use: str, *, full_text: bool = False, display_text: str | None = None) -> ft.Container:
+    return ft.Container(
+        content=ft.Text(
+            use if display_text is None else display_text, color=LAVENDER_TEXT,
+            max_lines=None if full_text else 1,
+            overflow=None if full_text else ft.TextOverflow.ELLIPSIS,
+            theme_style=ft.TextThemeStyle.BODY_MEDIUM,
+        ),
+        padding=ft.Padding.symmetric(horizontal=USE_CHIP_HORIZONTAL_PADDING, vertical=USE_CHIP_VERTICAL_PADDING),
+        border=ft.Border.all(0, ft.Colors.TRANSPARENT),
+        border_radius=USE_CHIP_RADIUS,
+        bgcolor=LAVENDER_SURFACE,
+        tooltip=use,
+    )
+
+
 class _CompactUseChips(ft.Container):
     """Fit the actual chips into one row, reserving space for the overflow count."""
 
     def __init__(self, uses: list[str]):
         super().__init__(on_size_change=self._resized)
         self._uses = list(uses)
-        labels = [_home_use_label(use) for use in uses]
-        self._indices = [index for index, label in enumerate(labels) if label]
-        self._widths: dict[str, float] = {}
-        self._available = 0.0
+        self._chip_indices = [index for index, use in enumerate(uses) if _home_use_label(use)]
+        self._chips = [
+            _use_chip(use, display_text=_home_use_label(use))
+            for use in uses
+            if _home_use_label(use)
+        ]
+        self._natural_widths: list[float | None] = [None] * len(self._chips)
+        self._available_width = 0.0
         self._layout = None
-        self._chips = [_use_chip(uses[index], display_text=labels[index]) for index in self._indices]
         for index, chip in enumerate(self._chips):
             chip.on_size_change = self._measure(index)
         self._counter_width = 0.0
@@ -183,10 +291,10 @@ class _CompactUseChips(ft.Container):
                            scroll=ft.ScrollMode.HIDDEN, opacity=0)
         self.content = self._row
 
-    def _measure(self, index: int):
+    def _measure(self, index: int) -> Callable[[ft.LayoutSizeChangeEvent], None]:
         def measured(event: ft.LayoutSizeChangeEvent) -> None:
             if self._chips[index].width is None:
-                self._widths[f"use:{index}"] = event.width
+                self._natural_widths[index] = event.width
                 self._fit()
         return measured
 
@@ -195,28 +303,34 @@ class _CompactUseChips(ft.Container):
         self._fit()
 
     def _resized(self, event: ft.LayoutSizeChangeEvent) -> None:
-        self._available = max(0, event.width)
+        self._available_width = max(0, event.width)
         self._fit()
 
     def _fit(self) -> None:
         total = len(self._uses)
-        countable = len(self._chips)
-        if self._available <= 0 or any(f"use:{i}" not in self._widths for i in range(countable)):
+        chip_count = len(self._chips)
+        if not chip_count:
+            self._counter.value = f"+{total}"
+            self._counter.tooltip = "\n".join(self._uses)
+            self._row.controls = [self._counter]
+            self._row.opacity = 1
+            return
+        if self._available_width <= 0 or any(width is None for width in self._natural_widths):
             return
         if not self._counter_width:
             return
-        natural = [self._widths[f"use:{index}"] for index in range(countable)]
+        natural_widths = [width for width in self._natural_widths if width is not None]
         visible_widths = []
-        for count in range(countable, 0, -1):
+        for count in range(chip_count, 0, -1):
             hidden = total - count
             counter_width = self._counter_width if hidden else 0
             gaps = CARD_SPACING * (count if hidden else count - 1)
-            remaining = self._available - sum(natural[:count - 1]) - gaps - counter_width
-            if remaining >= natural[count - 1] or (count == 1 and remaining > 24):
-                visible_widths = natural[:count - 1] + [min(natural[count - 1], remaining)]
+            remaining = self._available_width - sum(natural_widths[:count - 1]) - gaps - counter_width
+            if remaining >= natural_widths[count - 1] or (count == 1 and remaining > MIN_COMPACT_USE_WIDTH):
+                visible_widths = natural_widths[:count - 1] + [min(natural_widths[count - 1], remaining)]
                 break
         hidden = total - len(visible_widths)
-        layout = (tuple(visible_widths), hidden, self._available)
+        layout = (tuple(visible_widths), hidden, self._available_width)
         if layout == self._layout:
             return
         self._layout = layout
@@ -227,7 +341,8 @@ class _CompactUseChips(ft.Container):
         if hidden:
             self._counter.value = f"+{hidden}"
             self._counter.tooltip = "\n".join(
-                use for index, use in enumerate(self._uses) if index not in self._indices[:len(visible_widths)]
+                use for index, use in enumerate(self._uses)
+                if index not in self._chip_indices[:len(visible_widths)]
             )
             controls.append(self._counter)
         self._row.controls = controls
@@ -285,35 +400,6 @@ def medication_photo(
     )
 
 
-def action_button(
-    label: str,
-    on_click: ft.ControlEventHandler[ft.FilledButton],
-    *,
-    icon: ft.IconData | None = None,
-    kind: str = "primary",
-) -> ft.FilledButton:
-    if label.startswith("Save"):
-        icon = ft.Icons.SAVE_OUTLINED
-    return ft.FilledButton(
-        label, icon=retry_icon() if label == "Try again" else (ft.Icon(icon, size=20) if icon else None), on_click=on_click,
-        style=action_style(kind), elevation=0,
-        expand=True,
-    )
-
-
-def retry_icon() -> ft.Icon:
-    return ft.Icon(ft.Icons.SYNC, size=20, rotate=math.pi / 2)
-
-
-def medication_subtitle(strength: str | None, form: str | None, *, max_lines: int | None = None) -> ft.Text:
-    return ft.Text(
-        " · ".join(value.strip() for value in (strength, form) if value and value.strip()),
-        theme_style=ft.TextThemeStyle.BODY_MEDIUM,
-        visible=bool(strength or form),
-        max_lines=max_lines, overflow=ft.TextOverflow.ELLIPSIS if max_lines else None,
-    )
-
-
 def status_photo(photo: bytes | None, status: str, label: str) -> ft.Stack:
     color, surface, icon = {
         "verified": (SUCCESS_COLOR, SUCCESS_SURFACE, ft.Icons.CHECK_CIRCLE_OUTLINE),
@@ -322,26 +408,64 @@ def status_photo(photo: bytes | None, status: str, label: str) -> ft.Stack:
     }[status]
     badge = ft.Container(
         content=ft.Row([
-            ft.Icon(icon, color=color, size=18),
-            ft.Text(label, color=color, size=12, weight=ft.FontWeight.W_600),
-        ], spacing=6, tight=True),
-        bgcolor=surface, border_radius=24, padding=ft.Padding.symmetric(horizontal=12, vertical=8),
-        left=12, bottom=12,
+            ft.Icon(icon, color=color, size=STATUS_BADGE_ICON_SIZE),
+            ft.Text(label, color=color, size=TEXT_SIZE_SMALL, weight=ft.FontWeight.W_600),
+        ], spacing=STATUS_BADGE_SPACING, tight=True),
+        bgcolor=surface, border_radius=STATUS_BADGE_RADIUS,
+        padding=ft.Padding.symmetric(horizontal=STATUS_BADGE_HORIZONTAL_PADDING, vertical=STATUS_BADGE_VERTICAL_PADDING),
+        left=STATUS_BADGE_OFFSET, bottom=STATUS_BADGE_OFFSET,
     )
     return ft.Stack([
-        medication_photo(photo, height=180, aspect_ratio=4 / 3, fit=ft.BoxFit.COVER), badge,
+        medication_photo(photo, height=MEDICATION_PHOTO_HEIGHT, aspect_ratio=PHOTO_FRAME_ASPECT_RATIO, fit=ft.BoxFit.COVER), badge,
     ])
+
+
+def camera_guide(*, visible: bool = True) -> ft.Container:
+    def corner(*, flip_x: bool = False, flip_y: bool = False, **position) -> cv.Canvas:
+        def point(x: float, y: float) -> tuple[float, float]:
+            return (
+                CAMERA_GUIDE_CORNER_SIZE - x if flip_x else x,
+                CAMERA_GUIDE_CORNER_SIZE - y if flip_y else y,
+            )
+
+        inset = CAMERA_GUIDE_CORNER_INSET
+        edge = CAMERA_GUIDE_CORNER_SIZE - inset
+        arc_end = CAMERA_GUIDE_CORNER_ARC_END
+        return cv.Canvas(
+            shapes=[cv.Path(
+                elements=[
+                    cv.Path.MoveTo(*point(inset, edge)), cv.Path.LineTo(*point(inset, arc_end)),
+                    cv.Path.QuadraticTo(*point(inset, inset), *point(arc_end, inset), w=math.sqrt(0.5)),
+                    cv.Path.LineTo(*point(edge, inset)),
+                ],
+                paint=ft.Paint(color=ACCENT_COLOR, stroke_width=CAMERA_GUIDE_STROKE_WIDTH,
+                               style=ft.PaintingStyle.STROKE,
+                               stroke_cap=ft.StrokeCap.ROUND, stroke_join=ft.StrokeJoin.ROUND),
+            )],
+            width=CAMERA_GUIDE_CORNER_SIZE, height=CAMERA_GUIDE_CORNER_SIZE, **position,
+        )
+
+    return ft.Container(
+        content=ft.Stack([
+            corner(top=0, left=0),
+            corner(flip_x=True, top=0, right=0),
+            corner(flip_y=True, bottom=0, left=0),
+            corner(flip_x=True, flip_y=True, bottom=0, right=0),
+        ]),
+        margin=SECTION_SPACING, visible=visible, ignore_interactions=True,
+        border=ft.Border.all(CAMERA_GUIDE_BORDER_WIDTH, ACCENT_COLOR), border_radius=CAMERA_GUIDE_RADIUS,
+    )
 
 
 def result_layout(
     controls: list[ft.Control], actions: list[ft.Control], *,
     center_information: bool = False, action_spacing: float = CONTENT_PADDING,
 ) -> ft.SafeArea:
-    """Scroll the whole result card, including its trailing actions."""
+    """Scroll the whole result card, including its actions."""
     card = soft_card(ft.Column([
         ft.Column(controls=controls, spacing=CARD_SPACING, tight=True,
                   horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
-        ft.Column([ft.Row([action]) for action in actions], spacing=8,
+        ft.Column([ft.Row([action]) for action in actions], spacing=RESULT_ACTION_SPACING,
                   horizontal_alignment=ft.CrossAxisAlignment.STRETCH, tight=True),
     ], spacing=action_spacing, tight=True, horizontal_alignment=ft.CrossAxisAlignment.STRETCH))
     viewport = ft.ListView([card], expand=True, padding=ft.Padding.symmetric(vertical=SCREEN_MARGIN))
@@ -352,15 +476,15 @@ def result_layout(
 def stretch_card(
     card: ft.Container, leading: ft.Control | None = None, *,
     leading_spacing: float = CARD_SPACING, center_information: bool = True,
-):
-    """Distribute spare viewport space as padding, preserving natural content sizes."""
+) -> Callable[[ft.LayoutSizeChangeEvent], None]:
+    """Adjust card layout and alignment when its size changes."""
     sizes: dict[str, float] = {}
     information, actions = card.content.controls
     centered_information = ft.Container(content=information)
     card.content.controls[0] = centered_information
     extra = 0.0
 
-    def measured(key: str):
+    def measured(key: str) -> Callable[[ft.LayoutSizeChangeEvent], None]:
         def resize(event: ft.LayoutSizeChangeEvent) -> None:
             nonlocal extra
             sizes[key] = event.height
@@ -373,7 +497,7 @@ def stretch_card(
                 available -= sizes["leading"] + leading_spacing
             natural_height = sizes["information"] + card.content.spacing + sizes["actions"]
             padding = max(0, available - natural_height)
-            if abs(extra - padding) > 0.5:
+            if abs(extra - padding) > LAYOUT_RESIZE_TOLERANCE:
                 extra = padding
                 centered_information.padding = (
                     ft.Padding.symmetric(vertical=padding / 2) if center_information
@@ -388,47 +512,6 @@ def stretch_card(
     if leading is not None:
         leading.on_size_change = measured("leading")
     return measured("viewport")
-
-
-def match_option(
-    name: str,
-    strength: str | None,
-    form: str | None,
-    *,
-    selected: bool = False,
-    show_selection: bool = True,
-    on_click: ft.ControlEventHandler[ft.Container] | None = None,
-) -> ft.Container:
-    return ft.Container(
-        content=ft.Row([
-            ft.Column([medication_name(name), medication_subtitle(strength, form)],
-                      spacing=4, tight=True, expand=True),
-            ft.Container(
-                content=ft.Icon(ft.Icons.CHECK, color=CARD_COLOR, size=16) if selected else None,
-                width=24, height=24, border_radius=12,
-                border=ft.Border.all(1, PRIMARY_COLOR if selected else BLUE_BORDER),
-                bgcolor=PRIMARY_COLOR if selected else CARD_COLOR,
-                alignment=ft.Alignment.CENTER,
-                visible=show_selection,
-            ),
-        ], spacing=CARD_SPACING),
-        padding=CONTENT_PADDING, border_radius=12,
-        bgcolor=BLUE_SURFACE if selected else CARD_COLOR,
-        border=ft.Border.all(2 if selected else 1, PRIMARY_COLOR if selected else BLUE_BORDER),
-        on_click=on_click, ink=on_click is not None,
-    )
-
-
-def information_row(label: str, value: str | ft.Text) -> ft.Container:
-    text = value if isinstance(value, ft.Text) else ft.Text(value)
-    text.color, text.expand, text.text_align = TEXT_COLOR, 2, ft.TextAlign.RIGHT
-    return ft.Container(
-        content=ft.Row([
-            ft.Text(label, theme_style=ft.TextThemeStyle.BODY_MEDIUM, no_wrap=True),
-            text,
-        ], spacing=CARD_SPACING),
-        padding=CONTENT_PADDING, bgcolor=BACKGROUND_COLOR, border_radius=12,
-    )
 
 
 async def device_date_locale(page: ft.Page) -> ft.Locale | None:

@@ -54,7 +54,6 @@ class MedicationRepository:
                         connection.execute(f"ALTER TABLE medications ADD COLUMN {column} TEXT")
 
     def add(self, medication: Medication) -> Medication:
-        """Return the saved record."""
         validate_medication(medication)
         if medication.id is not None or medication.created_at is not None:
             raise ValueError("A new medication cannot have saved record metadata.")
@@ -87,6 +86,11 @@ class MedicationRepository:
             row = connection.execute("SELECT * FROM medications WHERE id = ?", (medication_id,)).fetchone()
 
         return _medication_from_row(row) if row is not None else None
+
+    def count(self) -> int:
+        """Count saved records without reading their photos or other fields."""
+        with closing(self._connect()) as connection:
+            return connection.execute("SELECT COUNT(*) FROM medications").fetchone()[0]
 
     def list_all(self) -> list[Medication]:
         """Return all medications ordered by creation date, newest first."""

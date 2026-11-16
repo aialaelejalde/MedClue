@@ -17,6 +17,7 @@ async def confirm_duplicate(page: ft.Page) -> bool:
         "You already have a medication with this name in your medicine cabinet. "
         "Would you like to save another entry?",
         action_text="Save anyway",
+        action_icon=ft.Icons.SAVE_OUTLINED,
         cancel_text="Continue editing",
     )
 
@@ -31,20 +32,15 @@ async def confirm_discard_changes(page: ft.Page) -> bool:
     )
 
 
-async def confirm_delete_medication(page: ft.Page) -> bool:
-    return await _show_dialog(
+async def delete_medication_with_confirmation(page: ft.Page, delete: Callable[[], None]) -> bool:
+    if not await _show_dialog(
         page,
         "Delete medication?",
         "Are you sure you want to delete this medication from your medicine cabinet? "
         "This action cannot be undone.",
         action_text="Delete",
         cancel_text="Cancel",
-    )
-
-
-async def delete_medication_with_confirmation(page: ft.Page, delete: Callable[[], None]) -> bool:
-    """Use the same confirmation and recovery flow from Home and details."""
-    if not await confirm_delete_medication(page):
+    ):
         return False
     while True:
         try:
@@ -53,7 +49,8 @@ async def delete_medication_with_confirmation(page: ft.Page, delete: Callable[[]
         except (sqlite3.Error, OSError, ValueError, LookupError):
             if not await show_error(
                 page, "Cannot delete medication",
-                "We couldn't delete this medication. Please try again.", action_text="Try again",
+                "We couldn't delete this medication. Please try again.",
+                action_text="Try again", action_icon=retry_icon(),
             ):
                 return False
 
@@ -74,17 +71,10 @@ async def show_error(
     message: str,
     *,
     action_text: str = "OK",
+    action_icon: ft.IconData | ft.Icon | None = None,
 ) -> bool:
     """Return True only when the user presses the error dialog's action."""
-    return await _show_dialog(page, title, message, action_text=action_text)
-
-
-async def show_empty_record_error(page: ft.Page) -> None:
-    await show_error(
-        page,
-        "Cannot save medication",
-        "Please add at least one piece of information before saving.",
-    )
+    return await _show_dialog(page, title, message, action_text=action_text, action_icon=action_icon)
 
 
 async def show_photo_too_large(page: ft.Page) -> bool:
@@ -112,6 +102,7 @@ async def _show_dialog(
     message: str,
     *,
     action_text: str,
+    action_icon: ft.IconData | ft.Icon | None = None,
     cancel_text: str | None = None,
 ) -> bool:
     """Handle dialog choices and close it on cancellation."""
@@ -132,7 +123,7 @@ async def _show_dialog(
         actions.append(ft.TextButton(cancel_text, on_click=lambda: choose(False)))
     actions.append(ft.TextButton(
         action_text, on_click=lambda: choose(True),
-        icon=retry_icon() if action_text == "Try again" else (ft.Icons.SAVE_OUTLINED if action_text.startswith("Save") else None),
+        icon=action_icon,
     ))
 
     dialog = ft.AlertDialog(

@@ -1,4 +1,4 @@
-"""Show candidates and let the user select one for checking."""
+"""Show candidates and let the user select one."""
 
 from collections.abc import Awaitable, Callable
 from copy import deepcopy
@@ -6,8 +6,8 @@ from copy import deepcopy
 import flet as ft
 
 from medclue_mobile.medications import Medication
-from medclue_mobile.ui.components import action_button, match_option, medication_name, result_layout, status_photo
-from medclue_mobile.ui.theme import CARD_SPACING, SCREEN_MARGIN, BLUE_SURFACE, PRIMARY_COLOR, CARD_COLOR
+from medclue_mobile.ui.components import MatchOption, action_button, medication_name, result_layout, status_photo
+from medclue_mobile.ui.theme import CARD_SPACING, SCREEN_MARGIN
 
 
 class PossibleMatchesScreen(ft.Container):
@@ -68,7 +68,7 @@ class PossibleMatchesScreen(ft.Container):
             tight=True,
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
         )
-        self._retake_button = action_button("Retake photo", self._retake, icon=ft.Icons.CAMERA_ALT_OUTLINED, kind="secondary")
+        self._retake_button = action_button("Retake photo", self._retake_photo, icon=ft.Icons.CAMERA_ALT_OUTLINED, kind="secondary")
         self._add_button = action_button("Add medication manually", self._add, icon=ft.Icons.ADD_CIRCLE_OUTLINE, kind="tertiary")
         self.content = result_layout([
             status_photo(photo, "possible", "Possible matches"),
@@ -77,26 +77,21 @@ class PossibleMatchesScreen(ft.Container):
             self._match_list,
         ], [self._retake_button, self._add_button])
 
-    def _match_card(self, index: int, option: dict) -> ft.Container:
+    def _match_card(self, index: int, option: dict) -> MatchOption:
         async def select(event: ft.Event) -> None:
             if self._busy:
                 return
-            card.bgcolor = BLUE_SURFACE
-            card.border = ft.Border.all(2, PRIMARY_COLOR)
-            indicator = card.content.controls[1]
-            indicator.bgcolor = PRIMARY_COLOR
-            indicator.border = ft.Border.all(1, PRIMARY_COLOR)
-            indicator.content = ft.Icon(ft.Icons.CHECK, color=CARD_COLOR, size=16)
+            card.set_selected(True)
             self._set_busy(True)
             try:
                 await self._on_select(index)
             finally:
                 self._set_busy(False)
 
-        card = match_option(option["name"], option.get("strength"), option.get("form"), on_click=select)
+        card = MatchOption(option["name"], option.get("strength"), option.get("form"), on_click=select)
         return card
 
-    async def _retake(self, event: ft.Event) -> None:
+    async def _retake_photo(self, event: ft.Event) -> None:
         if self._busy:
             return
         self._set_busy(True)

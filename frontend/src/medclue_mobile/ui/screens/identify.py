@@ -6,12 +6,15 @@ import flet as ft
 
 from medclue_mobile.api_client import PhotoTooLargeError
 from medclue_mobile.photos import CameraPermissionError, PhotoManager
+from medclue_mobile.ui.camera_preview import DEFAULT_PREVIEW_ASPECT_RATIO, fit_camera_preview, preview_aspect_ratio
 from medclue_mobile.ui.components import action_button, camera_guide, retry_icon, soft_card
 from medclue_mobile.ui.dialogs import show_error, show_photo_too_large
 from medclue_mobile.ui.theme import (
+    CAMERA_FRAME_RADIUS,
     CARD_COLOR,
     CARD_SPACING,
     CONTENT_PADDING,
+    PHOTO_FRAME_ASPECT_RATIO,
     SCREEN_MARGIN,
     SECTION_SPACING,
 )
@@ -32,7 +35,7 @@ class IdentifyScreen(ft.Container):
         self._camera_task = None
         self._preview_width = 0
         self._preview_height = 0
-        self._preview_ratio = 3 / 4
+        self._preview_ratio = DEFAULT_PREVIEW_ASPECT_RATIO
         photos.camera.expand = False
         photos.camera.left = 0
         photos.camera.top = 0
@@ -63,10 +66,10 @@ class IdentifyScreen(ft.Container):
                 controls=[photos.camera, self._guide, self._status_panel],
                 fit=ft.StackFit.EXPAND,
             ),
-            border_radius=16,
+            border_radius=CAMERA_FRAME_RADIUS,
             clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
         )
-        camera_card.aspect_ratio = 4 / 3
+        camera_card.aspect_ratio = PHOTO_FRAME_ASPECT_RATIO
         camera_card.on_size_change = self._resize_preview
         self._identify_button = action_button("Identify medication", self._identify, icon=ft.Icons.CAMERA_ALT_OUTLINED)
         self._identify_button.disabled = True
@@ -110,23 +113,16 @@ class IdentifyScreen(ft.Container):
         self._fit_preview()
 
     def _camera_changed(self, event: ft.Event) -> None:
-        ratio = event.aspect_ratio
-        if ratio is None or ratio <= 0:
+        ratio = preview_aspect_ratio(event)
+        if ratio is None:
             return
-        orientation = event.preview_pause_orientation or event.locked_capture_orientation or event.device_orientation
-        landscape = orientation in (ft.DeviceOrientation.LANDSCAPE_LEFT, ft.DeviceOrientation.LANDSCAPE_RIGHT)
-        self._preview_ratio = max(ratio, 1 / ratio) if landscape else min(ratio, 1 / ratio)
+        self._preview_ratio = ratio
         self._fit_preview()
 
     def _fit_preview(self) -> None:
-        if not self._active or self._preview_width <= 0 or self._preview_height <= 0:
+        if not self._active:
             return
-        camera = self._photos.camera
-        camera.width = max(self._preview_width, self._preview_height * self._preview_ratio)
-        camera.height = camera.width / self._preview_ratio
-        camera.left = (self._preview_width - camera.width) / 2
-        camera.top = (self._preview_height - camera.height) / 2
-        camera.update()
+        fit_camera_preview(self._photos.camera, self._preview_width, self._preview_height, self._preview_ratio)
 
     async def _initialize_camera(self) -> None:
         if not self._active or self._busy:
@@ -145,11 +141,7 @@ class IdentifyScreen(ft.Container):
                 self._guide.visible = True
                 self._status_panel.visible = False
         except CameraPermissionError:
-            self._show_camera_error(
-                "Camera access is off",
-                "Allow camera access in Settings to take photos.",
-                permission_denied=True,
-            )
+            self._show_permission_error()
         except (OSError, ValueError, RuntimeError, ft.FletException):
             self._show_camera_error("Camera unavailable", "We couldn't start the camera. Please try again.")
         finally:
@@ -162,6 +154,13 @@ class IdentifyScreen(ft.Container):
         self._status_message.value = message
         self._status_action.visible = not permission_denied
         self._status_panel.visible = True
+
+    def _show_permission_error(self) -> None:
+        self._show_camera_error(
+            "Camera access is off",
+            "Allow camera access in Settings to take photos.",
+            permission_denied=True,
+        )
 
     async def _retry_camera(self, event: ft.Event) -> None:
         await self._initialize_camera()
@@ -181,11 +180,7 @@ class IdentifyScreen(ft.Container):
                     await show_photo_too_large(self.page)
                 return
             except CameraPermissionError:
-                self._show_camera_error(
-                    "Camera access is off",
-                    "Allow camera access in Settings to take photos.",
-                    permission_denied=True,
-                )
+                self._show_permission_error()
                 return
             except (OSError, ValueError, RuntimeError, ft.FletException):
                 if self._active:

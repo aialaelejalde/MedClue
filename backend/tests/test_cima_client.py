@@ -74,6 +74,46 @@ def test_search_only_requests_details_for_matching_names(cima_client):
     assert responses == []
 
 
+def test_search_rejects_details_from_a_different_registered_medication(cima_client):
+    client, requests, responses = cima_client
+    responses.extend([
+        httpx.Response(200, json=search_page([medication("000001")])),
+        httpx.Response(200, json=medication("000002")),
+    ])
+
+    with pytest.raises(ValueError, match="did not return the requested medication"):
+        asyncio.run(client.search_presentations("Example"))
+
+    assert dict(requests[-1].url.params) == {"nregistro": "000001"}
+    assert responses == []
+
+
+def test_search_rejects_conflicting_medications_for_the_same_national_code(cima_client):
+    client, _, responses = cima_client
+    first = medication("000001", codes=("000010",))
+    second = medication("000002", codes=("000010",))
+    responses.extend([
+        httpx.Response(200, json=search_page([first, second])),
+        httpx.Response(200, json=first),
+        httpx.Response(200, json=second),
+    ])
+
+    with pytest.raises(ValueError, match="conflicting presentation data"):
+        asyncio.run(client.search_presentations("Example"))
+
+    assert responses == []
+
+
+def test_national_code_lookup_rejects_a_response_containing_only_other_packages(cima_client):
+    client, requests, responses = cima_client
+    responses.append(httpx.Response(200, json=medication(codes=("000020",))))
+
+    with pytest.raises(ValueError, match="did not return the requested presentation"):
+        asyncio.run(client.get_presentation("000010"))
+
+    assert dict(requests[-1].url.params) == {"cn": "000010"}
+
+
 @pytest.mark.parametrize("query", ["Example+Plus", "  Éxample - Plus  "])
 def test_search_keeps_small_name_differences(cima_client, query):
     client, requests, responses = cima_client

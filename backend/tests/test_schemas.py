@@ -308,7 +308,7 @@ def test_failed_image_analysis_does_not_include_later_results(candidate, field_n
         IdentificationResponse.model_validate_json(json.dumps(payload))
 
 
-@pytest.mark.parametrize("status", ["verified", "multiple_matches", "not_identified", "no_match"])
+@pytest.mark.parametrize("status", ["multiple_matches", "not_identified", "no_match"])
 @pytest.mark.parametrize("field_name", ["failed_step", "retry_token"])
 def test_completed_results_cannot_include_retry_details(response_payloads, status, field_name):
     payload = response_payloads[status]
@@ -316,6 +316,27 @@ def test_completed_results_cannot_include_retry_details(response_payloads, statu
 
     with pytest.raises(ValidationError, match="Only a connection error or timeout"):
         IdentificationResponse.model_validate_json(json.dumps(payload))
+
+
+@pytest.mark.parametrize("step", ["official_uses_retrieval", "uses_translation"])
+def test_verified_medication_can_include_retry_for_unavailable_uses(presentation, step):
+    result = IdentificationResponse(
+        status="verified", medication=presentation, failed_step=step, retry_token="signed-token",
+    )
+    assert result.failed_step == step
+    assert result.official_uses == []
+
+
+@pytest.mark.parametrize("fields", [
+    {"retry_token": "token"},
+    {"failed_step": "image_analysis", "retry_token": "token"},
+    {"failed_step": "cima_verification", "retry_token": "token"},
+    {"failed_step": "uses_translation"},
+    {"failed_step": "uses_translation", "retry_token": "token", "official_uses": ["Use"]},
+])
+def test_verified_retry_rejects_inconsistent_partial_results(presentation, fields):
+    with pytest.raises(ValidationError):
+        IdentificationResponse(status="verified", medication=presentation, **fields)
 
 
 @pytest.mark.parametrize(

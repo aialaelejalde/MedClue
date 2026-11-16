@@ -1,6 +1,7 @@
 """Manage medication identification, verification, and error handling."""
 
 import asyncio
+import logging
 from dataclasses import dataclass
 from typing import Literal
 
@@ -14,6 +15,9 @@ from medclue_api.official_uses import OfficialUsesProcessor
 from medclue_api.openai_client import OpenAIClient
 from medclue_api.retry_tokens import RetryState, RetryTokenManager
 from medclue_api.schemas import (CimaPresentation, IdentificationResponse, MedicationCandidate, ProcessingStep, VerifyRequest)
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -73,7 +77,11 @@ class IdentificationService:
             )
         except TimeoutError:
             return self._failure_response(progress, "timeout")
-        except (httpx.HTTPError, OpenAIError, ValueError):
+        except (httpx.HTTPError, OpenAIError, ValueError) as error:
+            logger.warning("Identification step failed", extra={
+                "step": progress.uses_processor.current_step if progress.uses_processor else progress.current_step,
+                "error_type": type(error).__name__,
+            })
             return self._failure_response(progress, "connection_error")
 
     async def _process(self, progress: _IdentificationProgress, photo: bytes | None, media_type: str) -> IdentificationResponse:
@@ -111,10 +119,7 @@ class IdentificationService:
                 progress.medication, self._cima_client, self._openai_client
             )
 
-        try:
-            uses = await progress.uses_processor.get_and_translate_uses()
-        except (TimeoutError, httpx.HTTPError, OpenAIError, ValueError):
-            uses = []
+        uses = await progress.uses_processor.get_and_translate_uses()
 
         return IdentificationResponse(status="verified", medication=progress.medication, official_uses=uses)
 
@@ -130,12 +135,12 @@ class IdentificationService:
                 indications=progress.uses_processor.indications,
             )
             token = self._token_manager.create_token(state)
-            if progress.medication is not None:
-                suggested_candidate = MedicationCandidate(
-                    name=progress.medication.name,
-                    strength=progress.medication.strength,
-                    form=progress.medication.form,
-                )
+            return IdentificationResponse(
+                status="verified",
+                medication=progress.medication,
+                failed_step=step,
+                retry_token=token,
+            )
         elif step == "cima_verification":
             state = RetryState(
                 failed_step="cima_verification",

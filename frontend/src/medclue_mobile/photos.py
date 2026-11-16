@@ -97,9 +97,6 @@ class PhotoManager:
         self._photo = None
         self._media_type = None
 
-    async def open_settings(self) -> bool:
-        return await self._permissions.open_app_settings()
-
 
 def compress_photo(photo: bytes) -> bytes:
     """Create a smaller JPEG for SQLite without changing the original photo bytes."""

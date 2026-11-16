@@ -223,7 +223,10 @@ def test_official_uses_failure_keeps_verified_medication(identification, step, e
     assert result.status == "verified"
     assert result.medication == context.medication
     assert result.official_uses == []
-    assert result.retry_token is None
+    assert result.failed_step == step
+    state = context.tokens.read_token(result.retry_token)
+    assert state.failed_step == step
+    assert state.medication == context.medication
     if step == "official_uses_retrieval":
         context.openai.translate_official_uses.assert_not_awaited()
 
@@ -240,11 +243,11 @@ def test_global_timeout_retry_skips_completed_steps(identification, monkeypatch,
     call.side_effect = blocked
     first = asyncio.run(context.service.identify(b"package photo"))
 
-    assert first.status == "timeout"
+    assert first.status == ("timeout" if step == "cima_verification" else "verified")
     assert first.failed_step == step
-    assert first.medication is None
+    assert first.medication == (None if step == "cima_verification" else context.medication)
     assert first.official_uses == []
-    assert first.suggested_candidate is not None
+    assert (first.suggested_candidate is not None) == (step == "cima_verification")
     state = context.tokens.read_token(first.retry_token)
     assert state.failed_step == step
     if step == "uses_translation":
@@ -256,6 +259,27 @@ def test_global_timeout_retry_skips_completed_steps(identification, monkeypatch,
 
     assert result.status == "verified"
     assert result.official_uses == ["Supported use"]
+    for stage, method in processing_calls(context).items():
+        assert method.await_count == (2 if stage == step else 1)
+
+
+@pytest.mark.parametrize("step", ["official_uses_retrieval", "uses_translation"])
+def test_official_uses_error_can_retry_without_reidentifying(identification, step):
+    context = identification
+    call = processing_calls(context)[step]
+    call.side_effect = ValueError("Invalid provider response")
+    first = asyncio.run(context.service.identify(b"package photo"))
+    assert first.status == "verified"
+    assert first.failed_step == step
+
+    call.side_effect = None
+    result = asyncio.run(context.service.process_selection_or_retry(VerifyRequest(retry_token=first.retry_token)))
+
+    assert result.status == "verified"
+    assert result.medication == context.medication
+    assert result.official_uses == ["Supported use"]
+    assert result.failed_step is None
+    assert result.retry_token is None
     for stage, method in processing_calls(context).items():
         assert method.await_count == (2 if stage == step else 1)
 

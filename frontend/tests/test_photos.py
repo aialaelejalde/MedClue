@@ -33,11 +33,10 @@ def photos(monkeypatch):
     permissions = SimpleNamespace(
         get_status=AsyncMock(return_value=fph.PermissionStatus.GRANTED),
         request=AsyncMock(return_value=fph.PermissionStatus.GRANTED),
-        open_app_settings=AsyncMock(return_value=True),
     )
     monkeypatch.setattr("medclue_mobile.photos.fc.Camera", Mock(return_value=camera))
     monkeypatch.setattr("medclue_mobile.photos.fph.PermissionHandler", Mock(return_value=permissions))
-    return SimpleNamespace(manager=PhotoManager(), camera=camera, permissions=permissions, back=back)
+    return SimpleNamespace(manager=PhotoManager(), camera=camera, permissions=permissions, front=front, back=back)
 
 
 def test_initialization_selects_the_back_camera_without_audio(photos):
@@ -53,6 +52,19 @@ def test_initialization_selects_the_back_camera_without_audio(photos):
     )
 
 
+def test_initialization_uses_the_first_available_camera_when_no_back_camera_exists(photos):
+    photos.camera.get_available_cameras.return_value = [photos.front]
+
+    asyncio.run(photos.manager.initialize_camera())
+
+    photos.camera.initialize.assert_awaited_once_with(
+        description=photos.front,
+        resolution_preset=fc.ResolutionPreset.MAX,
+        enable_audio=False,
+        image_format_group=fc.ImageFormatGroup.JPEG,
+    )
+
+
 def test_permission_is_requested_when_not_already_granted(photos):
     photos.permissions.get_status.return_value = fph.PermissionStatus.DENIED
 
@@ -62,7 +74,10 @@ def test_permission_is_requested_when_not_already_granted(photos):
     photos.camera.initialize.assert_awaited_once()
 
 
-@pytest.mark.parametrize("status", [fph.PermissionStatus.DENIED, fph.PermissionStatus.PERMANENTLY_DENIED])
+@pytest.mark.parametrize(
+    "status",
+    [fph.PermissionStatus.DENIED, fph.PermissionStatus.PERMANENTLY_DENIED, fph.PermissionStatus.RESTRICTED],
+)
 def test_denied_permission_prevents_camera_initialization(photos, status):
     photos.permissions.get_status.return_value = status
     photos.permissions.request.return_value = status
@@ -72,11 +87,11 @@ def test_denied_permission_prevents_camera_initialization(photos, status):
 
     photos.camera.get_available_cameras.assert_not_awaited()
     photos.camera.initialize.assert_not_awaited()
-    if status == fph.PermissionStatus.PERMANENTLY_DENIED:
+    if status in (fph.PermissionStatus.PERMANENTLY_DENIED, fph.PermissionStatus.RESTRICTED):
         photos.permissions.request.assert_not_awaited()
 
 
-def test_no_available_camera_produces_a_clear_error(photos):
+def test_no_available_camera_produces_an_error(photos):
     photos.camera.get_available_cameras.return_value = []
 
     with pytest.raises(RuntimeError, match="No camera is available"):
@@ -85,7 +100,7 @@ def test_no_available_camera_produces_a_clear_error(photos):
     photos.camera.initialize.assert_not_awaited()
 
 
-def test_capture_keeps_original_bytes_and_discard_clears_them(photos):
+def test_capture_keeps_original_bytes_and_media_type(photos):
     original = photos.camera.take_picture.return_value
     asyncio.run(photos.manager.initialize_camera())
 
@@ -94,7 +109,14 @@ def test_capture_keeps_original_bytes_and_discard_clears_them(photos):
     assert result is original
     assert photos.manager.photo is original
     assert photos.manager.media_type == "image/jpeg"
+
+
+def test_discard_clears_the_captured_photo_and_media_type(photos):
+    asyncio.run(photos.manager.initialize_camera())
+    asyncio.run(photos.manager.capture())
+
     photos.manager.discard_photo()
+
     assert photos.manager.photo is None
     assert photos.manager.media_type is None
 
@@ -192,7 +214,7 @@ def test_compression_reduces_size_without_changing_the_captured_original(photos)
         assert all(abs(value - expected) <= 5 for value, expected in zip(image.getpixel((0, 0)), (100, 150, 200)))
 
 
-def test_compression_corrects_orientation_without_enlarging_and_removes_exif():
+def test_compression_corrects_orientation_and_removes_exif():
     output = BytesIO()
     exif = Image.Exif()
     exif[274] = 6
@@ -209,6 +231,19 @@ def test_compression_corrects_orientation_without_enlarging_and_removes_exif():
     with Image.open(BytesIO(original)) as image:
         assert image.size == (80, 40)
         assert image.getexif()[274] == 6
+
+
+def test_compression_replaces_transparency_with_a_white_background():
+    output = BytesIO()
+    with Image.new("RGBA", (80, 40), (255, 0, 0, 0)) as image:
+        image.save(output, format="PNG")
+
+    compressed = compress_photo(output.getvalue())
+
+    with Image.open(BytesIO(compressed)) as image:
+        assert image.format == "JPEG"
+        assert image.mode == "RGB"
+        assert image.getpixel((0, 0)) == (255, 255, 255)
 
 
 @pytest.mark.parametrize("photo", [b"", b"not an image"])

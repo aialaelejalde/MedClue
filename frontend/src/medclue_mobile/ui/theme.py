@@ -1,4 +1,4 @@
-"""Shared visual tokens and Material theme for MedClue."""
+"""Define MedClue's visual styles and theme."""
 
 import flet as ft
 
@@ -20,6 +20,12 @@ DANGER_COLOR = "#DC2626"
 DANGER_SURFACE = "#FEF2F2"
 
 FONT_FAMILY = "Plus Jakarta Sans"
+TEXT_SIZE_SMALL = 12
+TEXT_SIZE_MEDIUM = 14
+TEXT_SIZE_LARGE = 16
+TITLE_TEXT_SIZE = 20
+HEADLINE_TEXT_SIZE = 24
+
 SCREEN_MARGIN = 16
 CARD_SPACING = 12
 CONTENT_PADDING = 16
@@ -29,20 +35,28 @@ BUTTON_RADIUS = 28
 INPUT_RADIUS = 12
 BAR_HEIGHT = 64
 HEADER_HEIGHT = 52
-INPUT_TEXT_SIZE = 14
 MIN_TOUCH_TARGET_SIZE = 48
 ICON_SIZE = 24
+SMALL_ICON_SIZE = 20
+
+MEDICATION_PHOTO_HEIGHT = 180
+PHOTO_FRAME_ASPECT_RATIO = 4 / 3
+CAMERA_FRAME_RADIUS = 16
+
+ACTION_BUTTON_PADDING_HORIZONTAL = 20
+ACTION_BUTTON_PADDING_VERTICAL = 14
+BUTTON_ANIMATION_DURATION_MS = 150
+ACTION_PRESSED_OPACITY = 0.18
+CONTROL_PRESSED_OPACITY = 0.14
+NAVIGATION_LABEL_BOTTOM_PADDING = 4
 
 
 @ft.value
 class _ActionButtonStyle(ft.ButtonStyle):
-    # Flet's Flutter renderer supports minimum_size, but its Python ButtonStyle
-    # does not expose it yet. Keep the native minimum instead of fixing height.
     minimum_size: ft.ControlStateValue[ft.Size] | None = None
 
 
 def action_style(kind: str = "primary") -> ft.ButtonStyle:
-    """Keep action colors, typography and touch targets consistent."""
     foreground, background = {
         "primary": (CARD_COLOR, PRIMARY_COLOR),
         "secondary": (LAVENDER_TEXT, LAVENDER_SURFACE),
@@ -54,12 +68,12 @@ def action_style(kind: str = "primary") -> ft.ButtonStyle:
         bgcolor={ft.ControlState.DEFAULT: background, ft.ControlState.DISABLED: BACKGROUND_COLOR},
         side=ft.BorderSide(1, BLUE_BORDER) if kind == "tertiary" else ft.BorderSide(0, ft.Colors.TRANSPARENT),
         shape=ft.RoundedRectangleBorder(radius=BUTTON_RADIUS),
-        padding={ft.ControlState.DEFAULT: ft.Padding.symmetric(horizontal=20, vertical=14)},
+        padding={ft.ControlState.DEFAULT: ft.Padding.symmetric(horizontal=ACTION_BUTTON_PADDING_HORIZONTAL, vertical=ACTION_BUTTON_PADDING_VERTICAL)},
         minimum_size={ft.ControlState.DEFAULT: ft.Size(0, MIN_TOUCH_TARGET_SIZE)},
-        text_style=ft.TextStyle(size=14, weight=ft.FontWeight.W_600, font_family=FONT_FAMILY),
+        text_style=ft.TextStyle(size=TEXT_SIZE_MEDIUM, weight=ft.FontWeight.W_600, font_family=FONT_FAMILY),
         elevation=0,
-        overlay_color={ft.ControlState.PRESSED: ft.Colors.with_opacity(0.18, foreground)},
-        animation_duration=150,
+        overlay_color={ft.ControlState.PRESSED: ft.Colors.with_opacity(ACTION_PRESSED_OPACITY, foreground)},
+        animation_duration=BUTTON_ANIMATION_DURATION_MS,
     )
 
 
@@ -89,38 +103,38 @@ def create_theme() -> ft.Theme:
             enforce_system_navigation_bar_contrast=False,
         ),
         text_theme=ft.TextTheme(
-            headline_large=ft.TextStyle(size=24, color=TEXT_COLOR, weight=ft.FontWeight.W_700, font_family=FONT_FAMILY),
-            title_large=ft.TextStyle(size=20, color=TEXT_COLOR, weight=ft.FontWeight.W_700, font_family=FONT_FAMILY),
-            title_medium=ft.TextStyle(size=16, color=TEXT_COLOR, weight=ft.FontWeight.W_700, font_family=FONT_FAMILY),
-            body_large=ft.TextStyle(size=16, color=TEXT_COLOR, font_family=FONT_FAMILY),
-            body_medium=ft.TextStyle(size=14, color=SECONDARY_TEXT_COLOR, font_family=FONT_FAMILY),
-            body_small=ft.TextStyle(size=12, color=SECONDARY_TEXT_COLOR, font_family=FONT_FAMILY),
+            headline_large=ft.TextStyle(size=HEADLINE_TEXT_SIZE, color=TEXT_COLOR, weight=ft.FontWeight.W_700, font_family=FONT_FAMILY),
+            title_large=ft.TextStyle(size=TITLE_TEXT_SIZE, color=TEXT_COLOR, weight=ft.FontWeight.W_700, font_family=FONT_FAMILY),
+            title_medium=ft.TextStyle(size=TEXT_SIZE_LARGE, color=TEXT_COLOR, weight=ft.FontWeight.W_700, font_family=FONT_FAMILY),
+            body_large=ft.TextStyle(size=TEXT_SIZE_LARGE, color=TEXT_COLOR, font_family=FONT_FAMILY),
+            body_medium=ft.TextStyle(size=TEXT_SIZE_MEDIUM, color=SECONDARY_TEXT_COLOR, font_family=FONT_FAMILY),
+            body_small=ft.TextStyle(size=TEXT_SIZE_SMALL, color=SECONDARY_TEXT_COLOR, font_family=FONT_FAMILY),
         ),
         dropdown_theme=ft.DropdownTheme(text_style=ft.TextStyle(font_family=FONT_FAMILY)),
         navigation_bar_theme=ft.NavigationBarTheme(
             bgcolor=CARD_COLOR, height=BAR_HEIGHT, elevation=0,
             indicator_color=ft.Colors.TRANSPARENT,
             label_text_style={
-                ft.ControlState.DEFAULT: ft.TextStyle(size=12, color=PRIMARY_COLOR, font_family=FONT_FAMILY),
-                ft.ControlState.SELECTED: ft.TextStyle(size=12, color=PRIMARY_COLOR, weight=ft.FontWeight.W_700, font_family=FONT_FAMILY),
+                ft.ControlState.DEFAULT: ft.TextStyle(size=TEXT_SIZE_SMALL, color=PRIMARY_COLOR, font_family=FONT_FAMILY),
+                ft.ControlState.SELECTED: ft.TextStyle(size=TEXT_SIZE_SMALL, color=PRIMARY_COLOR, weight=ft.FontWeight.W_700, font_family=FONT_FAMILY),
             },
-            label_padding=ft.Padding.only(top=0, bottom=4),
+            label_padding=ft.Padding.only(top=0, bottom=NAVIGATION_LABEL_BOTTOM_PADDING),
         ),
         card_theme=ft.CardTheme(color=CARD_COLOR, elevation=0, shape=ft.RoundedRectangleBorder(radius=CARD_RADIUS)),
         chip_theme=ft.ChipTheme(
             bgcolor=LAVENDER_SURFACE, selected_color=ACCENT_COLOR,
-            label_text_style=ft.TextStyle(size=14, color=LAVENDER_TEXT, font_family=FONT_FAMILY),
+            label_text_style=ft.TextStyle(size=TEXT_SIZE_MEDIUM, color=LAVENDER_TEXT, font_family=FONT_FAMILY),
             border_side=ft.BorderSide(0, ft.Colors.TRANSPARENT), shape=ft.StadiumBorder(),
         ),
         filled_button_theme=ft.FilledButtonTheme(style=action_style()),
         outlined_button_theme=ft.OutlinedButtonTheme(style=action_style("tertiary")),
         text_button_theme=ft.TextButtonTheme(style=ft.ButtonStyle(
-            color=PRIMARY_COLOR, animation_duration=150,
+            color=PRIMARY_COLOR, animation_duration=BUTTON_ANIMATION_DURATION_MS,
             shape=ft.RoundedRectangleBorder(radius=BUTTON_RADIUS),
-            overlay_color={ft.ControlState.PRESSED: ft.Colors.with_opacity(0.14, PRIMARY_COLOR)},
+            overlay_color={ft.ControlState.PRESSED: ft.Colors.with_opacity(CONTROL_PRESSED_OPACITY, PRIMARY_COLOR)},
         )),
         icon_button_theme=ft.IconButtonTheme(style=ft.ButtonStyle(
-            overlay_color={ft.ControlState.PRESSED: ft.Colors.with_opacity(0.14, PRIMARY_COLOR)},
+            overlay_color={ft.ControlState.PRESSED: ft.Colors.with_opacity(CONTROL_PRESSED_OPACITY, PRIMARY_COLOR)},
         )),
         icon_theme=ft.IconTheme(color=PRIMARY_COLOR, size=ICON_SIZE),
     )
