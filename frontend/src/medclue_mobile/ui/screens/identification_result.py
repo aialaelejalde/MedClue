@@ -53,7 +53,7 @@ class IdentificationResultScreen(ft.Container):
         self._opening_form = False
         self._save_button = action_button("Save to my medications", self._save, icon=ft.Icons.SAVE_OUTLINED)
         self._identify_button = action_button("Identify another medication", self._identify, icon=ft.Icons.CAMERA_ALT_OUTLINED, kind="secondary")
-        self._retry_button = action_button("Retry official uses", self._retry, icon=retry_icon(), kind="secondary")
+        self._retry_button = action_button("Try again", self._retry, icon=retry_icon(), kind="secondary")
         self._retry_button.visible = failed_step is not None and on_retry is not None
 
         controls = [
