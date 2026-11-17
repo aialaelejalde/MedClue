@@ -3,7 +3,8 @@
 
 IMAGE_ANALYSIS_PROMPT = """
 Read the visible text on the medication package in the supplied photo.
-Extract possible medication names, strengths, and pharmaceutical forms.
+Extract possible medication names, strengths, pharmaceutical forms, and Spanish
+national codes.
 
 Use only text that you can read reliably in the photo. Do not use packaging
 colors, logos, or medical knowledge to guess a medication or missing details.
@@ -17,15 +18,26 @@ Keep pharmaceutical form details such as prolonged release or film coating.
 Set strength or form to null when that information cannot be read reliably.
 Do not infer a strength or form from the medication name.
 
+Extract a national code only when it is visible, reliably readable, and clearly
+identifiable as the package's Spanish national code. Keep it as a string,
+including any leading zeros. A national code has six digits and may be followed
+by a control digit separated by a dot, such as "998625.4". Preserve that suffix
+when visible. Do not confuse the national code with a barcode, GTIN,
+batch or lot number, registration number, serial number, or any other identifier.
+Do not derive it from a barcode or guess it from the medication name.
+Set national_code to null when it cannot be read or identified reliably.
+Never invent missing information.
+
 Return every plausible candidate supported by readable package text when there
 is more than one possibility. Do not select one automatically or invent a list
 of alternatives from memory. Do not repeat identical candidates.
 If no reliable medication name can be read, return an empty candidates list.
 
 Return only a JSON object with a candidates list. Each candidate must have
-exactly these fields: name (nonempty string), strength (string or null), and
-form (string or null). Always include all three fields.
-Do not include official uses, CIMA identifiers, verification claims, personal
+exactly these fields: name (nonempty string), strength (string or null),
+form (string or null), and national_code (string or null). Always include all
+four fields. Associate each national code only with its own medication.
+Do not include official uses, other CIMA identifiers, verification claims, personal
 instructions, medical advice, explanations, or Markdown.
 """.strip()
 

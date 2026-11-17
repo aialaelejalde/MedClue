@@ -12,7 +12,10 @@ from medclue_mobile.ui.screens.possible_match_result import PossibleMatchResultS
 
 
 ASYNC_OPERATION_TIMEOUT_SECONDS = 5
-SUGGESTED_CANDIDATE = {"name": "Suggested", "strength": "100 mg", "form": "Comprimidos recubiertos"}
+SUGGESTED_CANDIDATE = {
+    "name": "Suggested", "strength": "100 mg", "form": "Comprimidos recubiertos",
+    "national_code": "998625.4",
+}
 RESULTS = [
     {"status": "not_identified"},
     {"status": "no_match", "suggested_candidate": SUGGESTED_CANDIDATE},
@@ -76,7 +79,8 @@ def test_manual_add_keeps_available_details_and_photo_without_official_uses(resu
 
     asyncio.run(context.screen._add_button.on_click(None))
 
-    expected = Medication(photo=b"captured photo", **(result.get("suggested_candidate") or {}))
+    candidate = result.get("suggested_candidate") or {}
+    expected = Medication(photo=b"captured photo", **{field: candidate.get(field) for field in ("name", "strength", "form")})
     context.add.assert_awaited_once_with(expected)
     context.retry.assert_not_awaited()
     context.retake.assert_not_awaited()

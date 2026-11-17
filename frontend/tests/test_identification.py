@@ -48,9 +48,10 @@ def test_completed_results_are_kept_without_automatic_requests(identification, s
 
 
 @pytest.mark.parametrize("option_type", ["candidates", "presentations"])
-def test_selected_match_is_verified_without_repeating_image_analysis(identification, option_type):
+@pytest.mark.parametrize("national_code", [None, "998625.4"])
+def test_selected_match_is_verified_without_repeating_image_analysis(identification, option_type, national_code):
     context = identification
-    option = context.candidate if option_type == "candidates" else context.medication
+    option = {**context.candidate, "national_code": national_code} if option_type == "candidates" else context.medication
     context.api.identify.return_value = {"status": "multiple_matches", option_type: [option, {**option, "name": "Other"}]}
 
     async def select():

@@ -86,7 +86,7 @@ def test_image_is_sent_with_the_expected_request(openai_client, media_type):
 def test_image_analysis_returns_the_received_candidates(openai_client):
     client, parse = openai_client
     candidates = [
-        MedicationCandidate(name="Example", strength="500 mg", form="tablet"),
+        MedicationCandidate(name="Example", strength="500 mg", form="tablet", national_code="998625.4"),
         MedicationCandidate(name="Another medicine", strength=None, form=None),
     ]
     parse.return_value.output_parsed = ImageAnalysisResult(candidates=candidates)

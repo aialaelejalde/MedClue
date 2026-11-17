@@ -69,6 +69,8 @@ def test_photo_size_limit_is_checked_before_sending(api_client, extra_bytes):
     "selection",
     [
         {"candidate": {"name": "Example", "strength": None, "form": None}},
+        {"candidate": {"name": "Example", "strength": None, "form": None, "national_code": "998625.4"}},
+        {"candidate": {"name": "Example", "strength": None, "form": None, "national_code": None}},
         {"national_code": "000010"},
         {"retry_token": "signed-token"},
     ],
@@ -196,7 +198,18 @@ def test_personal_record_fields_cannot_be_sent_as_a_candidate(api_client):
     client, requests, _ = api_client
     candidate = {"name": "Example", "strength": None, "form": None, "notes": "Private note"}
 
-    with pytest.raises(ValueError, match="only name, strength, and form"):
+    with pytest.raises(ValueError, match="optionally national_code"):
+        asyncio.run(client.send_selection_or_retry(candidate=candidate))
+
+    assert requests == []
+
+
+@pytest.mark.parametrize("national_code", [998625, False])
+def test_candidate_national_code_must_be_text_or_null(api_client, national_code):
+    client, requests, _ = api_client
+    candidate = {"name": "Example", "strength": None, "form": None, "national_code": national_code}
+
+    with pytest.raises(ValueError, match="text or null"):
         asyncio.run(client.send_selection_or_retry(candidate=candidate))
 
     assert requests == []

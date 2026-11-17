@@ -17,7 +17,7 @@ from medclue_api.schemas import (
 
 @pytest.fixture
 def candidate():
-    return {"name": "Example medicine", "strength": None, "form": None}
+    return {"name": "Example medicine", "strength": None, "form": None, "national_code": None}
 
 
 @pytest.fixture
@@ -59,6 +59,30 @@ def test_candidate_accepts_null_strength_and_form(candidate):
 
     assert result.strength is None
     assert result.form is None
+    assert result.national_code is None
+
+
+def test_candidate_without_national_code_remains_compatible(candidate):
+    del candidate["national_code"]
+
+    assert MedicationCandidate.model_validate(candidate).national_code is None
+
+
+@pytest.mark.parametrize("national_code", ["000010", "998625.4", None, "invalid", ""])
+def test_candidate_preserves_the_optional_national_code(candidate, national_code):
+    candidate["national_code"] = national_code
+
+    result = MedicationCandidate.model_validate_json(json.dumps(candidate))
+
+    assert result.national_code == national_code
+
+
+@pytest.mark.parametrize("national_code", [998625, 998625.4, False])
+def test_candidate_national_code_must_be_text_or_null(candidate, national_code):
+    candidate["national_code"] = national_code
+
+    with pytest.raises(ValidationError):
+        MedicationCandidate.model_validate(candidate)
 
 
 def test_candidate_strips_outer_spaces_from_name(candidate):

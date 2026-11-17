@@ -8,9 +8,9 @@ from typing import Literal
 import httpx
 from openai import OpenAIError
 
-from medclue_api.cima_client import CimaClient
+from medclue_api.cima_client import CimaClient, normalize_national_code
 from medclue_api.config import IDENTIFICATION_TIMEOUT_SECONDS
-from medclue_api.matching import find_presentation_matches
+from medclue_api.matching import compare_presentation, find_presentation_matches
 from medclue_api.official_uses import OfficialUsesProcessor
 from medclue_api.openai_client import OpenAIClient
 from medclue_api.retry_tokens import RetryState, RetryTokenManager
@@ -100,17 +100,26 @@ class IdentificationService:
                 if progress.medication is None:
                     raise LookupError("The selected CIMA presentation was not found.")
             elif progress.candidate is not None:
-                presentations = await self._cima_client.search_presentations(progress.candidate.name)
-                matches = find_presentation_matches(progress.candidate, presentations)
-                if matches.verified is None:
-                    if len(matches.presentations) > 1:
-                        return IdentificationResponse(
-                            status="multiple_matches",
-                            suggested_candidate=progress.candidate,
-                            presentations=matches.presentations,
-                        )
-                    return IdentificationResponse(status="no_match", suggested_candidate=progress.candidate)
-                progress.medication = matches.verified
+                national_code = normalize_national_code(progress.candidate.national_code)
+                if national_code is not None:
+                    presentation = await self._cima_client.get_presentation(national_code)
+                    if presentation is not None:
+                        if compare_presentation(progress.candidate, presentation, require_complete_details=False) is not True:
+                            return IdentificationResponse(status="no_match", suggested_candidate=progress.candidate)
+                        progress.medication = presentation
+
+                if progress.medication is None:
+                    presentations = await self._cima_client.search_presentations(progress.candidate.name)
+                    matches = find_presentation_matches(progress.candidate, presentations)
+                    if matches.verified is None:
+                        if len(matches.presentations) > 1:
+                            return IdentificationResponse(
+                                status="multiple_matches",
+                                suggested_candidate=progress.candidate,
+                                presentations=matches.presentations,
+                            )
+                        return IdentificationResponse(status="no_match", suggested_candidate=progress.candidate)
+                    progress.medication = matches.verified
             else:
                 raise ValueError("A candidate or national code is required for verification.")
 

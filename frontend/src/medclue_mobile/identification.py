@@ -74,6 +74,8 @@ class IdentificationSession:
 
         option = options[index]
         candidate = {key: option.get(key) for key in ("name", "strength", "form")}
+        if candidates and "national_code" in option:
+            candidate["national_code"] = option["national_code"]
         selection = (
             {"candidate": candidate}
             if candidates else {"national_code": option["national_code"]}

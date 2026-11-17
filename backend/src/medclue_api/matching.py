@@ -77,7 +77,7 @@ class _NameParts:
     """Keep the complete strength and form found in an official medication name."""
 
     name: str
-    strength: str
+    strength: str | None
     form: str
 
 
@@ -179,12 +179,25 @@ def find_presentation_matches(candidate: MedicationCandidate, presentations: lis
     result = PresentationMatches(presentations=matches)
     if len(matches) == 1:
         presentation = matches[0]
-        if (
-            candidate_name == _name_key(presentation)
-            and _compare_presentation_details(candidate, presentation) is True
-        ):
+        if compare_presentation(candidate, presentation) is True:
             result.verified = presentation
     return result
+
+
+def compare_presentation(candidate: MedicationCandidate, presentation: CimaPresentation, *, require_complete_details: bool = True) -> bool | None:
+    """Compare the name, strength, and form of an AI candidate and a CIMA presentation."""
+    candidate_name = _name_key(candidate, allow_missing_details=not require_complete_details)
+    official_name = _name_key(presentation, allow_missing_details=not require_complete_details)
+    names_match = (
+        candidate_name == official_name if require_complete_details
+        else compare_names(candidate_name, official_name)
+    )
+    if not names_match:
+        return False
+    details_match = _compare_presentation_details(candidate, presentation)
+    if require_complete_details or details_match is not None:
+        return details_match
+    return _compare_presentation_details(candidate, presentation, require_complete_details=False)
 
 
 def _form_field_matches_name(structured: str | None, named: str | None) -> bool:
@@ -216,12 +229,36 @@ def _name_conflicts_with_fields(medication: MedicationCandidate, parts: _NamePar
     return False
 
 
-def _compare_presentation_details(candidate: MedicationCandidate, presentation: CimaPresentation) -> bool | None:
+def _compare_presentation_details(candidate: MedicationCandidate, presentation: CimaPresentation, *, require_complete_details: bool = True) -> bool | None:
     """Compare strength and form between an AI candidate and a CIMA presentation. Return True if they match, False if they differ, or None if uncertain."""
-    candidate_parts = _split_medication_name(candidate.name)
-    official_parts = _split_medication_name(presentation.name)
+    candidate_parts = _split_medication_name(candidate.name, allow_missing_strength=not require_complete_details)
+    official_parts = _split_medication_name(presentation.name, allow_missing_strength=not require_complete_details)
     if _name_conflicts_with_fields(candidate, candidate_parts) or _name_conflicts_with_fields(presentation, official_parts):
         return None
+
+    if not require_complete_details:
+        comparisons = []
+        for field, compare in (
+            ("strength", lambda first, second: compare_strengths(
+                first, second, active_ingredients=presentation.active_ingredients,
+            )),
+            ("form", compare_forms),
+        ):
+            candidate_values = {getattr(candidate, field)}
+            official_values = {getattr(presentation, field)}
+            if candidate_parts is not None:
+                candidate_values.add(getattr(candidate_parts, field))
+            if official_parts is not None:
+                official_values.add(getattr(official_parts, field))
+            for first in candidate_values - {None}:
+                for second in official_values - {None}:
+                    comparisons.append(
+                        True if normalize_name(first) == normalize_name(second)
+                        else compare(first, second)
+                    )
+        if False in comparisons:
+            return False
+        return None if None in comparisons else True
 
     strength_match = compare_strengths(
         candidate.strength, presentation.strength, active_ingredients=presentation.active_ingredients,
@@ -269,24 +306,32 @@ def _form_key(form: str) -> str:
     return normalized
 
 
-def _name_key(medication: MedicationCandidate) -> str:
+def _name_key(medication: MedicationCandidate, *, allow_missing_details: bool = False) -> str:
     """Get the medication name without its strength and form, when possible."""
     name = normalize_name(medication.name)
 
-    parts = _split_medication_name(name)
+    parts = _split_medication_name(name, allow_missing_strength=allow_missing_details)
     ingredients = medication.active_ingredients if isinstance(medication, CimaPresentation) else None
-    if parts is not None and compare_strengths(parts.strength, medication.strength, active_ingredients=ingredients) is True:
-        return parts.name
+    if parts is not None and (
+        allow_missing_details
+        or compare_strengths(parts.strength, medication.strength, active_ingredients=ingredients) is True
+    ):
+        name = parts.name
+        if not allow_missing_details:
+            return name
 
-    if medication.form:
+    elif medication.form:
         aliases = FORM_NAMES.get(_form_key(medication.form), (normalize_name(medication.form),))
         form_pattern = "|".join(re.escape(alias) for alias in aliases)
         name = re.sub(r"\s+(?:" + form_pattern + r")(?:\s+efg)?$", "", name)
 
+    if allow_missing_details and medication.strength:
+        name = re.sub(r"\s+" + re.escape(normalize_name(medication.strength)) + r"$", "", name)
+
     return name
 
 
-def _split_medication_name(name: str) -> _NameParts | None:
+def _split_medication_name(name: str, *, allow_missing_strength: bool = False) -> _NameParts | None:
     """Separate the medication name into its name, strength, and form when possible."""
     name = normalize_name(name)
     for number in re.finditer(r"(?<!\S)[0-9]", name):
@@ -304,6 +349,12 @@ def _split_medication_name(name: str) -> _NameParts | None:
                 parts.append(_NameParts(name[:number.start()].strip(), strength, form))
         if parts:
             return parts[0] if len(parts) == 1 else None
+    if allow_missing_strength:
+        aliases = sorted((alias for aliases in FORM_NAMES.values() for alias in aliases), key=len, reverse=True)
+        for alias in aliases:
+            match = re.fullmatch(r"(.+)\s+" + re.escape(alias) + r"(?:\s+efg)?", name)
+            if match is not None:
+                return _NameParts(match.group(1), None, alias)
     return None
 
 

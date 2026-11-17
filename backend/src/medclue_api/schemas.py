@@ -34,6 +34,7 @@ class MedicationCandidate(_Schema):
     name: str
     strength: str | None
     form: str | None
+    national_code: str | None = Field(default=None, min_length=0)
 
 
 class ImageAnalysisResult(_Schema):

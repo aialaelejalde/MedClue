@@ -66,12 +66,17 @@ class MedClueApiClient:
         if len(selection) != 1:
             raise ValueError("Send one candidate, national code, or retry token.")
         if candidate is not None:
-            if not isinstance(candidate, dict) or set(candidate) != {"name", "strength", "form"}:
-                raise ValueError("A candidate must contain only name, strength, and form.")
+            required_fields = {"name", "strength", "form"}
+            if (
+                not isinstance(candidate, dict)
+                or not required_fields <= set(candidate)
+                or set(candidate) - required_fields - {"national_code"}
+            ):
+                raise ValueError("A candidate must contain name, strength, form, and optionally national_code.")
             if not isinstance(candidate["name"], str) or not candidate["name"].strip():
                 raise ValueError("The candidate name must contain text.")
-            for value in candidate.values():
-                if value is not None and (not isinstance(value, str) or not value.strip()):
+            for field, value in candidate.items():
+                if value is not None and (not isinstance(value, str) or (field != "national_code" and not value.strip())):
                     raise ValueError("Candidate fields must contain text or null.")
         else:
             value = national_code if national_code is not None else retry_token

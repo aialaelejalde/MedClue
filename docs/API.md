@@ -20,8 +20,8 @@ Examples use test data. Response examples show only relevant fields; unused fiel
 {
   "status": "multiple_matches",
   "candidates": [
-    {"name": "Example", "strength": "500 mg", "form": "tablet"},
-    {"name": "Another", "strength": null, "form": null}
+    {"name": "Example", "strength": "500 mg", "form": "tablet", "national_code": "000010"},
+    {"name": "Another", "strength": null, "form": null, "national_code": null}
   ]
 }
 ```
@@ -36,12 +36,12 @@ Checks a selected match or continues a failed step without repeating image analy
 | `national_code` | String | Load the selected CIMA presentation by its national code. |
 | `retry_token` | String | Continue from the failed step stored in a returned token. |
 
-A candidate requires `name`, `strength` and `form`. The name must be a nonempty string. Strength and form must be nonempty strings or `null`; include both fields even when unknown. Codes and tokens must be nonempty strings. Extra JSON fields are rejected.
+A candidate contains `name`, `strength`, `form` and `national_code`. The name must be a nonempty string. Strength and form must be nonempty strings or `null`. The candidate's national code can be a string or `null`. Top-level national codes and retry tokens must be nonempty strings. Extra JSON fields are rejected.
 
 AI candidate selected in the app:
 
 ```json
-{"candidate": {"name": "Example", "strength": "500 mg", "form": "tablet"}}
+{"candidate": {"name": "Example", "strength": "500 mg", "form": "tablet", "national_code": "000010"}}
 ```
 
 CIMA presentation selected in the app:
@@ -87,7 +87,7 @@ Both endpoints return all these fields. Unused optional values are `null`; unuse
 | `failed_step` | String or null | Step that failed; see the retry table. |
 | `retry_token` | String or null | Backend-issued token used to continue that step. |
 
-CIMA objects add `registration_number` and `national_code` to the candidate fields. Both identifiers are strings. A `multiple_matches` response has at least two entries in either `candidates` or `presentations`, never both.
+CIMA objects add `registration_number` to the candidate fields. Both `registration_number` and `national_code` must be nonempty strings. A `multiple_matches` response has at least two entries in either `candidates` or `presentations`, never both.
 
 ## 4. Response statuses
 
@@ -98,7 +98,7 @@ These are identification results returned with **HTTP 200**, including service f
 | `verified` | CIMA confirms the medicine. Official uses are included when available. |
 | `multiple_matches` | Several AI candidates or CIMA presentations need user selection. |
 | `not_identified` | AI returns no reliable medicine name. CIMA is not queried. |
-| `no_match` | A suggested medicine cannot be confirmed through CIMA. This includes insufficient matching information. |
+| `no_match` | A suggested medicine cannot be confirmed through CIMA due to missing matches, insufficient information or conflicting medication data. |
 | `connection_error` | An external request fails or its response cannot be used. This can include a provider's own request timeout. |
 | `timeout` | The shared 40-second backend processing limit is reached before confirmation. |
 

@@ -81,6 +81,7 @@ def test_identify_requires_a_photo(api):
     "selection",
     [
         {"candidate": {"name": "Example", "strength": "500 mg", "form": "tablet"}},
+        {"candidate": {"name": "Example", "strength": "500 mg", "form": "tablet", "national_code": "998625.4"}},
         {"national_code": "000010"},
         {"retry_token": "signed-retry-token"},
     ],

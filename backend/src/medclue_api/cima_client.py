@@ -117,6 +117,14 @@ class CimaClient:
             page += 1
 
 
+def normalize_national_code(national_code: str | None) -> str | None:
+    """Accept six ASCII digits, optionally followed by a dot and one control digit."""
+    if national_code is None:
+        return None
+    match = re.fullmatch(r"([0-9]{6})(?:\.[0-9])?", national_code.strip())
+    return match.group(1) if match else None
+
+
 def _medication_candidate(medication: dict) -> MedicationCandidate:
     """Get the name, strength, and form of a medication from CIMA data."""
     name = _required_text(medication.get("nombre"), "Medication name")
