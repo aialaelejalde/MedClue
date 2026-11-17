@@ -2,7 +2,7 @@
 
 ## Pre-built APK
 
-The Android APK will be available in GitHub Releases. Users can download, install and test the personal medicine cabinet without setting up a backend. AI identification and CIMA verification will not be available in the public demo because they require an active backend with a paid OpenAI API.
+The Android APK is available in [GitHub Releases](https://github.com/aialaelejalde/MedClue/releases/tag/v1.0.0). Users can download, install and test the personal medicine cabinet without setting up a backend. AI identification and CIMA verification are not available in the public demo because they require an active backend with a paid OpenAI API.
 
 ## 1. Prerequisites
 
