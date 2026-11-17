@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/logo.png" alt="MedClue logo" width="260">
+  <img src="docs/images/logo.png" alt="MedClue logo" width="450">
 </p>
 
 # MedClue
