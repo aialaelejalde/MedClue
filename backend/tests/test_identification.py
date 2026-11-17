@@ -132,68 +132,28 @@ def test_national_code_without_a_cima_match_falls_back_to_name_search(identifica
 
 @pytest.mark.parametrize("changes", [
     {"name": "Another"},
-    {"name": "Example Forte"},
     {"strength": "250 mg"},
     {"form": "capsule"},
-    {"name": "Example 250 mg tablets", "strength": None},
-    {"name": "Example 500 mg capsules", "form": None},
-    {"name": "Example 500 mg capsules"},
-    {"name": "Example capsules", "strength": None, "form": None},
+    {"strength": None, "form": None},
+    {"name": "Example capsules", "strength": "unknown", "form": "tablet"},
 ])
-def test_conflicting_national_code_keeps_only_original_photo_data(identification, changes):
+def test_national_code_confirms_official_data_without_comparing_photo_details(identification, changes):
     context = identification
     candidate = context.candidate.model_copy(update={"national_code": "000010", **changes})
     context.openai.analyze_image.return_value = ImageAnalysisResult(candidates=[candidate])
 
     result = asyncio.run(context.service.identify(b"package photo"))
 
-    assert result.status == "no_match"
-    assert result.suggested_candidate == candidate
-    assert result.medication is None
+    assert result.status == "verified"
+    assert result.suggested_candidate is None
+    assert result.medication == context.medication
     assert result.presentations == []
-    assert result.official_uses == []
+    assert result.official_uses == ["Supported use"]
     context.cima.get_presentation.assert_awaited_once_with("000010")
     context.cima.search_presentations.assert_not_awaited()
-    context.cima.get_official_indications.assert_not_awaited()
-    context.openai.translate_official_uses.assert_not_awaited()
-
-
-@pytest.mark.parametrize("candidate_changes, official_changes", [
-    ({"strength": "0,5 g", "form": "TABLETS"}, {}),
-    ({"name": " Éxample ", "strength": None, "form": None}, {}),
-    ({}, {"strength": None, "form": None}),
-    ({"name": "Example-Plus"}, {"name": "EXAMPLE PLUS 500 mg COMPRIMIDOS"}),
-    ({"name": "Example 0.5 g tablets", "strength": None, "form": None}, {}),
-    ({"strength": None, "form": None}, {"name": "Example", "strength": None, "form": None}),
-    ({"strength": "5%", "form": "cream"}, {"name": "EXAMPLE 5% CREMA", "strength": "5%", "form": "crema"}),
-    ({"strength": None, "form": None}, {"name": "EXAMPLE COMPRIMIDOS", "strength": None, "form": None}),
-    ({"form": "film-coated tablet"}, {"form": "COMPRIMIDO RECUBIERTO CON PELÍCULA"}),
-])
-def test_code_matching_accepts_equivalent_or_missing_details(identification, candidate_changes, official_changes):
-    context = identification
-    candidate = context.candidate.model_copy(update={"national_code": "000010", **candidate_changes})
-    official = context.medication.model_copy(update=official_changes)
-    context.openai.analyze_image.return_value = ImageAnalysisResult(candidates=[candidate])
-    context.cima.get_presentation.return_value = official
-
-    result = asyncio.run(context.service.identify(b"package photo"))
-
-    assert result.status == "verified"
-    assert result.medication == official
-    context.cima.search_presentations.assert_not_awaited()
-
-
-def test_uncertain_code_match_stays_unconfirmed_without_searching_again(identification):
-    context = identification
-    candidate = context.candidate.model_copy(update={"national_code": "000010", "strength": "unclear"})
-    context.openai.analyze_image.return_value = ImageAnalysisResult(candidates=[candidate])
-
-    result = asyncio.run(context.service.identify(b"package photo"))
-
-    assert result.status == "no_match"
-    assert result.suggested_candidate == candidate
-    context.cima.search_presentations.assert_not_awaited()
-    context.cima.get_official_indications.assert_not_awaited()
+    context.cima.get_official_indications.assert_awaited_once_with("000001")
+    context.openai.translate_official_uses.assert_awaited_once_with("Official indications")
+    context.openai.analyze_image.assert_awaited_once()
 
 
 @pytest.mark.parametrize("failure", ["connection", "timeout"])
@@ -218,17 +178,18 @@ def test_code_lookup_failure_retries_with_code_and_original_candidate(identifica
     context.cima.search_presentations.assert_not_awaited()
 
     context.cima.get_presentation.side_effect = None
-    # A contradictory retry result must still be checked against the photo data.
-    context.cima.get_presentation.return_value = context.medication.model_copy(update={"name": "Another"})
+    official = context.medication.model_copy(update={"name": "Another"})
+    context.cima.get_presentation.return_value = official
     result = asyncio.run(context.service.process_selection_or_retry(VerifyRequest(retry_token=first.retry_token)))
 
-    assert result.status == "no_match"
-    assert result.suggested_candidate == candidate
+    assert result.status == "verified"
+    assert result.medication == official
+    assert result.official_uses == ["Supported use"]
     assert context.cima.get_presentation.await_count == 2
     assert all(call.args == ("000010",) for call in context.cima.get_presentation.await_args_list)
     context.openai.analyze_image.assert_awaited_once()
     context.cima.search_presentations.assert_not_awaited()
-    context.cima.get_official_indications.assert_not_awaited()
+    context.cima.get_official_indications.assert_awaited_once_with("000001")
 
 
 def test_selected_ai_candidate_keeps_its_code_without_reanalyzing(identification):

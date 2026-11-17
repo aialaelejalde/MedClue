@@ -54,7 +54,7 @@ Calls to external services are asynchronous, so the backend can handle other req
 
 1. **Capture and upload.** The app checks the photo and sends it without compression or resizing to maintain image quality and improve AI identification accuracy.
 2. **AI image analysis.** OpenAI reads the visible name, strength, pharmaceutical form and national code. Its instructions ask it to leave unclear details unknown. No candidates means the process ends without calling CIMA. Several candidates require user selection.
-3. **CIMA matching.** The backend searches by national code first when a valid code is available. If the code includes a control digit after a dot, only the first six digits are used. If the code is missing, invalid or not found in CIMA, the backend searches by name. Python rules compare names, strengths and forms, allowing known differences such as accents and equivalent units. A national code match allows missing details but must be consistent with the available medication information. If the presentation found by national code cannot be reliably confirmed, the backend returns the AI suggestion as an unconfirmed result without searching by name. Automatic confirmation requires a reliable match.
+3. **CIMA matching.** The backend searches by national code first when a valid code is available. If the code includes a control digit after a dot, only the first six digits are used. If CIMA finds the presentation, the medicine is confirmed directly without comparing other medication details. If the code is missing, invalid or not found in CIMA, the backend searches by name. Python rules compare names, strengths and forms, allowing known differences such as accents and equivalent units. Incompatible presentations are discarded. Automatic confirmation requires a reliable match across all three fields, no detected contradictions and only one remaining presentation after filtering and grouping.
 4. **Multiple matches.** The backend groups equivalent CIMA presentations when possible. If several options remain, the app asks the user to choose. An AI candidate starts a CIMA search; a selected CIMA option is loaded by its national code. Neither path repeats image analysis.
 5. **Official uses.** For a confirmed medicine, the backend loads section 4.1, Therapeutic indications, from CIMA. OpenAI turns the Spanish text into short English labels. Its instructions require the original meaning and restrictions to remain. The backend checks the output structure; it does not independently check the medical meaning of the translation.
 6. **Result presentation.** The backend returns a status with confirmed data, possible matches or an unconfirmed suggestion. The app selects the matching result screen. Choosing to save passes available data to the local entry form.
@@ -69,12 +69,10 @@ flowchart TD
     Code -->|Yes| Lookup[Search CIMA by national code]
     Code -->|No| Search[Search CIMA by name and compare candidate]
     Lookup -->|Not found| Search
-    Lookup -->|Found| Compare[Compare medication information]
-    Compare -->|Confirmed| Uses[Load official uses and translate]
-    Compare -->|Not confirmed| Unconfirmed[Show unconfirmed result]
-    Search -->|Several presentations| SelectCIMA[User selects a CIMA presentation]
+    Lookup -->|Found| Uses[Load official uses and translate]
+    Search -->|Several possible presentations| SelectCIMA[User selects a CIMA presentation]
     SelectCIMA --> Load[Load medicine using its national code]
-    Search -->|No confirmed match| Unconfirmed
+    Search -->|No confirmed match| Unconfirmed[Show unconfirmed result]
     Search -->|Confirmed| Uses
     Load --> Uses
     Uses -->|Available uses or none| Result[Show confirmed result]

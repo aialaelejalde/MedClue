@@ -42,7 +42,7 @@ Outside the scope:
 ### Medication identification
 
 - Show a live camera preview and start identification by taking a photo in one action. Read visible names, strengths, forms and national codes without guessing missing details.
-- Confirm matches through CIMA using the available medication information, including the national code when available. A similar name alone is not enough for automatic confirmation. If several matches are possible, let the user choose before checking the selection.
+- Confirm medicines directly when a valid national code is found in CIMA. Otherwise, search by name. Name-based automatic confirmation requires matching names, strengths and pharmaceutical forms, with only one presentation remaining after filtering and grouping. If several matches are possible, let the user choose.
 - Let users read results without saving. Choosing to save opens a form with available photo and medicine details; nothing is saved automatically.
 
 ### Official medication information
@@ -76,7 +76,7 @@ Outside the scope:
 - **Platform:** Android is the target platform. Camera access requires permission.
 - **Online services:** Identification and official information need internet access and working external services.
 - **AI:** Small text, blur, reflections or missing package details can cause wrong or uncertain suggestions.
-- **CIMA:** Confirmation depends on available Spanish medicine records and sufficient, consistent medication information.
+- **CIMA:** Confirmation depends on available Spanish medicine records. National code identification relies on accurate AI extraction, while name-based confirmation requires sufficient and consistent medication information.
 - **Photos:** Identification photos are limited to 15 MB.
 - **Data protection:** There are no user accounts, separate app lock or added encryption for saved records. Protection depends on the device and Android storage. External services apply their own data policies.
 - **Medical safety:** A CIMA data match does not confirm that a medicine is suitable for the user. Users must check the package and follow professional medical instructions.

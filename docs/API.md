@@ -98,7 +98,7 @@ These are identification results returned with **HTTP 200**, including service f
 | `verified` | CIMA confirms the medicine. Official uses are included when available. |
 | `multiple_matches` | Several AI candidates or CIMA presentations need user selection. |
 | `not_identified` | AI returns no reliable medicine name. CIMA is not queried. |
-| `no_match` | A suggested medicine cannot be confirmed through CIMA due to missing matches, insufficient information or conflicting medication data. |
+| `no_match` | A name-based search returns no compatible presentations or a single presentation that cannot be reliably confirmed. |
 | `connection_error` | An external request fails or its response cannot be used. This can include a provider's own request timeout. |
 | `timeout` | The shared 40-second backend processing limit is reached before confirmation. |
 

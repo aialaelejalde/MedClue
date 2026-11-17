@@ -548,6 +548,47 @@ def test_candidate_name_must_also_agree_with_its_extracted_fields(candidate, pre
     assert result.verified is None
 
 
+@pytest.mark.parametrize("named_form, structured_form", [
+    ("capsules", "tablet"),
+    ("prolonged-release tablets", "tablet"),
+    ("solution for injection", "oral solution"),
+])
+def test_form_in_a_name_without_strength_cannot_contradict_separate_fields(named_form, structured_form):
+    candidate = MedicationCandidate(name=f"Example {named_form}", strength="500 mg", form=structured_form)
+    presentation = CimaPresentation(
+        name=candidate.name, strength="500 mg", form=structured_form,
+        registration_number="000001", national_code="000002",
+    )
+
+    result = find_presentation_matches(candidate, [presentation])
+
+    assert result.verified is None
+
+
+def test_compatible_form_in_a_name_without_strength_keeps_existing_verification():
+    candidate = MedicationCandidate(name="Example tablets", strength="500 mg", form="film-coated tablet")
+    presentation = CimaPresentation(
+        name=candidate.name, strength="500 mg", form="film-coated tablet",
+        registration_number="000001", national_code="000002",
+    )
+
+    assert find_presentation_matches(candidate, [presentation]).verified == presentation
+
+
+@pytest.mark.parametrize("strength", ["unknown", "0 mg", "-1 mg", "1.000 mg"])
+def test_identical_invalid_strength_text_cannot_confirm_a_name_match(strength):
+    candidate = MedicationCandidate(name="Example", strength=strength, form="tablet")
+    presentation = CimaPresentation(
+        name="EXAMPLE", strength=strength, form="tablet",
+        registration_number="000001", national_code="000002",
+    )
+
+    result = find_presentation_matches(candidate, [presentation])
+
+    assert result.presentations == [presentation]
+    assert result.verified is None
+
+
 @pytest.mark.parametrize("inconsistent", [False, True])
 def test_name_based_verification_does_not_hide_an_alternative(inconsistent):
     candidate = MedicationCandidate(name="Example", strength="100 mg", form="comprimidos recubiertos")

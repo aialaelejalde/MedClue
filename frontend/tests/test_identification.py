@@ -47,8 +47,11 @@ def test_completed_results_are_kept_without_automatic_requests(identification, s
     context.api.send_selection_or_retry.assert_not_awaited()
 
 
-@pytest.mark.parametrize("option_type", ["candidates", "presentations"])
-@pytest.mark.parametrize("national_code", [None, "998625.4"])
+@pytest.mark.parametrize("option_type, national_code", [
+    ("candidates", None),
+    ("candidates", "998625.4"),
+    ("presentations", None),
+])
 def test_selected_match_is_verified_without_repeating_image_analysis(identification, option_type, national_code):
     context = identification
     option = {**context.candidate, "national_code": national_code} if option_type == "candidates" else context.medication
