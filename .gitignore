@@ -38,7 +38,18 @@ dist/
 # Android signing files
 *.jks
 *.keystore
+*.p12
+*.pfx
+*.pem
+*.key
 key.properties
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
 
 # IDE settings
 .idea/
