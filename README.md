@@ -4,6 +4,8 @@
 
 # MedClue
 
+[![Tests](https://github.com/aialaelejalde/MedClue/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/aialaelejalde/MedClue/actions/workflows/tests.yml)
+
 MedClue is an Android app that allows users to take a photo of a medication package to find out what it is used for. It uses AI and CIMA, Spain's official medicine database, to identify medications available in Spain and show their official uses in English when available. Users can also create and manage a personal medication cabinet.
 
 ## Motivation
@@ -80,7 +82,7 @@ MedClue/
 ├── docs/               # Project documentation and screenshots
 ├── .github/workflows/  # Automated testing workflows
 ├── .gitignore          # Files excluded from version control
-├── LICENCE.md          # Project license
+├── LICENCE             # Project license
 └── README.md           # Project overview
 ```
 
